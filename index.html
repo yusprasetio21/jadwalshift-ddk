@@ -204,6 +204,13 @@
   table.cal td.avail{ background-image:linear-gradient(rgba(46,125,79,.22), rgba(46,125,79,.22)); outline:2px solid var(--green); outline-offset:-2px; }
   table.cal thead th.sel{ background:var(--blue); color:#fff; border-top:2px solid var(--blue); }
   table.cal thead th.sel.today{ background:var(--blue-dark); box-shadow:inset 0 -3px 0 #fff; }
+  table.cal thead th.weekend{ background:#1E293B; }
+  table.cal thead th.sel.weekend{ background:#1E3A5F; }
+  table.cal thead th.sel.today.weekend{ background:#132845; }
+  table.cal td.weekend{ background-color:#CAD4DE; }
+  table.cal td.slot-off.weekend{ background-color:#AAB8C6; color:#0F172A; font-weight:700; }
+  table.cal td.slot-PS.weekend{ background-color:#BEE3E1; }
+  table.cal td.slot-M.weekend{ background-color:#CBC2E5; }
   table.cal td.sel{ background-image:linear-gradient(var(--blue-tint), var(--blue-tint)); }
   table.cal .sel-l{ border-left:2px solid var(--blue); }
   table.cal .sel-r{ border-right:2px solid var(--blue); }
@@ -779,7 +786,7 @@ const DEFAULT_NAMES = [
   "Hendra Setiaji","Asmadi Djasman","Akbar Yus Prasetio","Amzah","Aziz Setia Aji",
   "Hanapi","M Hajar Zakariya","Grandhista Septya I. P","Reza Pitriyanto","Reza Bayu Perdana"
 ];
-let personnel = DEFAULT_NAMES.map((name,i)=>({ id:i, name, rank:i+1, kuningQuota:10, cutiBalances:{} }));
+let personnel = DEFAULT_NAMES.map((name,i)=>({ id:i, name, rank:i+1, kuningQuota:10, maxQuota:14, cutiBalances:{} }));
 let cutiList = [];
 let kuningList = [];
 let lockedList = [];
@@ -788,6 +795,8 @@ let nextId = 1;
 const CUTI_DEFAULT_BALANCE = 12;
 const KUNING_DECAY_RATIO = 0.7;
 const KUNING_MIN_QUOTA = 1;
+const MAXDAYS_DECAY_RATIO = 0.7;
+const MAXDAYS_MIN_QUOTA = 10;
 let currentRole = 'guest';
 let activePanel = null;
 let adminTab = 'setup';
@@ -840,7 +849,7 @@ async function persistSchedule(y, m, res){
   }, 'year,month');
 }
 async function persistPersonnelField(id, field, value){
-  const col = field==='kuningQuota' ? 'kuning_quota' : field;
+  const col = field==='kuningQuota' ? 'kuning_quota' : field==='maxQuota' ? 'max_quota' : field;
   await dbUpdate('personnel', id, { [col]: value });
 }
 async function persistCutiBalance(pid, year, balance){
@@ -882,6 +891,7 @@ async function loadFromSupabase(){
     if(pRows && pRows.length){
       personnel = pRows.map(r=>({
         id: r.id, name: r.name, rank: r.rank, kuningQuota: r.kuning_quota,
+        maxQuota: (r.max_quota==null ? 14 : r.max_quota),
         cutiBalances: (cbRows||[]).filter(b=>b.personnel_id===r.id)
           .reduce((acc,b)=>{ acc[b.year]=b.balance; return acc; }, {})
       }));
@@ -1121,6 +1131,16 @@ function effectiveKuningQuota(pid, year, month){
   if(usedPrev>=quotaPrev && quotaPrev>0) return Math.max(KUNING_MIN_QUOTA, Math.ceil(quotaPrev*KUNING_DECAY_RATIO));
   return base;
 }
+function effectiveMaxQuota(pid, year, month){
+  const base = personnel[pid].maxQuota;
+  const pv = prevMonthYear(year, month);
+  const prev = schedules[skey(pv.y, pv.m)];
+  if(!prev) return base;
+  const usedPrev = (prev.monthPS[pid]||0) + (prev.monthM[pid]||0);
+  const quotaPrev = effectiveMaxQuota(pid, pv.y, pv.m);
+  if(usedPrev>=quotaPrev && quotaPrev>0) return Math.max(MAXDAYS_MIN_QUOTA, Math.round(quotaPrev*MAXDAYS_DECAY_RATIO));
+  return base;
+}
 function cutiBalanceForYear(pid, year){
   const p = personnel[pid];
   return (p.cutiBalances && p.cutiBalances[year]!=null) ? p.cutiBalances[year] : CUTI_DEFAULT_BALANCE;
@@ -1138,11 +1158,31 @@ function cutiUsedInYear(pid, year){
 }
 function fmtRange(c){ return c.start===c.end ? `tgl ${c.start}` : `tgl ${c.start}–${c.end}`; }
 function monthTag(month, year){ return `${monthNames[month-1].slice(0,3)} ${year}`; }
+function tomorrowDateStr(y, m){
+  const rt = realToday();
+  if(y < rt.y || (y === rt.y && m < rt.m)) return null; // bulan lampau, seluruhnya sudah lewat
+  if(y === rt.y && m === rt.m){
+    const tomorrow = rt.d + 1;
+    if(tomorrow > daysInMonthOf(y, m)) return null; // sudah di hari terakhir bulan
+    return `${y}-${pad2(m)}-${pad2(tomorrow)}`;
+  }
+  // bulan masa depan, dibuka mulai tanggal 1
+  return `${y}-${pad2(m)}-01`;
+}
+
 function applyDateBounds(inputEl){
-  const min = monthFirstStr() > todayStr() ? monthFirstStr() : todayStr();
+  if(!inputEl) return;
+  const min = tomorrowDateStr(viewY, viewM);
   const max = monthLastStr();
-  if(min > max){ inputEl.disabled = true; inputEl.title = 'Bulan ini sudah lewat'; }
-  else { inputEl.disabled = false; inputEl.min = min; inputEl.max = max; inputEl.title=''; }
+  if(!min || min > max){
+    inputEl.disabled = true;
+    inputEl.title = 'Bulan ini sudah lewat atau sudah berada di hari terakhir. Jadwal tanggal aktif dan tanggal sebelumnya sudah fix tidak boleh diubah.';
+  } else {
+    inputEl.disabled = false;
+    inputEl.min = min;
+    inputEl.max = max;
+    inputEl.title = `Hanya tanggal mulai besok (${min}) hingga akhir bulan (${max}) yang dapat diajukan/diubah.`;
+  }
 }
 function dayFromDateInput(value){
   if(!value) return null;
@@ -1227,11 +1267,12 @@ function renderSetupPanel(area){
     <div class="note">Kapasitas per hari: 2 orang PS + 2 orang M. Semua personel menjalani pola sama: PS → M → Libur-1 → Libur-2 → kembali ke ujung antrian.</div>
   </div>`;
   const tbl = document.getElementById('tblPersonel');
-  tbl.innerHTML = `<tr><th>Nama</th><th>Urutan antrian</th><th>Kuota kuning<br>(basis/bulan)</th><th>Sisa cuti ${viewY}</th></tr>` +
+  tbl.innerHTML = `<tr><th>Nama</th><th>Urutan antrian</th><th>Kuota kuning<br>(basis/bulan)</th><th>Maks hari<br>dinas/bulan</th><th>Sisa cuti ${viewY}</th></tr>` +
     personnel.map(p=>`<tr>
       <td>${p.name}</td>
       <td><input type="number" min="1" max="${personnel.length}" value="${p.rank}" onchange="personnel[${p.id}].rank=parseInt(this.value)||${p.rank}; persistPersonnelField(${p.id},'rank',personnel[${p.id}].rank);"></td>
       <td><input type="number" min="0" max="31" value="${p.kuningQuota}" onchange="personnel[${p.id}].kuningQuota=parseInt(this.value)||0; persistPersonnelField(${p.id},'kuningQuota',personnel[${p.id}].kuningQuota);"></td>
+      <td><input type="number" min="1" max="31" value="${p.maxQuota}" onchange="personnel[${p.id}].maxQuota=parseInt(this.value)||14; persistPersonnelField(${p.id},'maxQuota',personnel[${p.id}].maxQuota);"></td>
       <td><input type="number" min="0" max="60" value="${cutiBalanceForYear(p.id, viewY)}" onchange="setCutiBalance(${p.id}, ${viewY}, this.value); refreshAdminOrModal();"></td>
     </tr>`).join('');
 }
@@ -1278,9 +1319,14 @@ function renderLockPanel(area){
 function renderLockList(){
   const box = document.getElementById('listLock');
   if(!box) return;
+  const rt = realToday();
   box.innerHTML = lockedList.map(l=>{
     const p = personnel[l.personnelId];
-    return `<div class="reqrow approved"><span>${p.name} · tgl ${l.date} (${monthTag(l.month,l.year)}) · ${l.slot}${l.reason?' ('+l.reason+')':''}</span><button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button></div>`;
+    const isPastOrActive = (l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d);
+    const actionHtml = isPastOrActive
+      ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+      : `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
+    return `<div class="reqrow approved"><span>${p.name} · tgl ${l.date} (${monthTag(l.month,l.year)}) · ${l.slot}${l.reason?' ('+l.reason+')':''}</span>${actionHtml}</div>`;
   }).join('') || `<div class="note">Belum ada lock admin.</div>`;
 }
 function addLock(){
@@ -1293,6 +1339,17 @@ function addLock(){
   const date = dayFromDateInput(dateVal);
   const month = viewM, year = viewY;
   if(!date){ warnBox.innerHTML='Pilih tanggal yang valid di dalam bulan yang sedang dibuka.'; warnBox.classList.add('show'); return; }
+
+  const rt = realToday();
+  if(year < rt.y || (year===rt.y && month < rt.m)){
+    warnBox.innerHTML='⚠ Bulan ini sudah lewat, jadwal tidak dapat diubah.';
+    warnBox.classList.add('show'); return;
+  }
+  if(year === rt.y && month === rt.m && date <= rt.d){
+    warnBox.innerHTML=`⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Penguncian hanya boleh untuk tanggal mulai besok (tgl ${rt.d + 1} s/d ${daysInMonth()}).`;
+    warnBox.classList.add('show'); return;
+  }
+
   const existing = lockedList.filter(l=>l.date===date && l.slot===slot && l.month===month && l.year===year);
   if(existing.length>=CAP){ warnBox.innerHTML=`⚠ Slot ${slot} tanggal ${date} sudah penuh (${existing.map(e=>personnel[e.personnelId].name).join(', ')}).`; warnBox.classList.add('show'); return; }
   if(existing.some(l=>l.personnelId===personnelId)){ warnBox.innerHTML=`⚠ ${personnel[personnelId].name} sudah dikunci di slot ${slot} tanggal ini.`; warnBox.classList.add('show'); return; }
@@ -1304,7 +1361,7 @@ function addLock(){
     lockedList.push(row);
     dbInsert('locked_slots', {id:row.id, personnel_id:personnelId, date, slot, reason, month, year});
     refreshAdminOrModal();
-    maybeRegenerate(month, year, `Lock ${slot} ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+    maybeRegenerate(month, year, `Lock ${slot} ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis disesuaikan`, date);
   };
   if(onCuti){ warnBox.innerHTML=`⚠ ${p.name} sedang cuti tanggal ${date}. Batalkan cuti dulu kalau memang harus masuk.`; warnBox.classList.add('show'); return; }
   if(onKuning){
@@ -1320,10 +1377,17 @@ function addLock(){
 }
 function removeLock(id){
   const item = lockedList.find(l=>l.id===id);
+  if(!item) return;
+  const rt = realToday();
+  const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && item.date <= rt.d);
+  if(isPastOrActive){
+    toast(`Lock tgl ${item.date} tidak dapat dihapus karena tanggal tersebut sudah fix (aktif/sudah lewat).`);
+    return;
+  }
   lockedList = lockedList.filter(l=>l.id!==id);
   dbDelete('locked_slots', id);
   refreshAdminOrModal();
-  if(item) maybeRegenerate(item.month, item.year, `Lock ${item.slot} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`);
+  maybeRegenerate(item.month, item.year, `Lock ${item.slot} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis disesuaikan`, item.date);
 }
 
 /* =====================================================================
@@ -1421,6 +1485,13 @@ function addSwap(sched){
   const [dStr, slot] = dateEl.value.split('|');
   const date = parseInt(dStr);
   const partnerId = parseInt(partnerEl.value);
+
+  const rt = realToday();
+  if(viewY === rt.y && viewM === rt.m && date <= rt.d){
+    warnBox.innerHTML = `⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Tukar dinas hanya boleh mulai besok (tgl ${rt.d + 1}).`;
+    warnBox.classList.add('show'); return;
+  }
+
   const isAvail = sched.calendar[date-1].L2.includes(partnerId);
 
   if(!isAdmin() && !isAvail){
@@ -1445,19 +1516,26 @@ function addSwap(sched){
   dbInsert('swap_requests', {id:row.id, requester_id:requesterId, date, slot, partner_id:partnerId, reason, status, month: viewM, year: viewY});
   refreshAdminOrModal();
   updateNavBadges();
-  if(status==='approved') maybeRegenerate(viewM, viewY, `Tukar dinas ${personnel[requesterId].name} ↔ ${personnel[partnerId].name} tgl ${date} ditambahkan — jadwal otomatis diperbarui`);
+  if(status==='approved') maybeRegenerate(viewM, viewY, `Tukar dinas ${personnel[requesterId].name} ↔ ${personnel[partnerId].name} tgl ${date} ditambahkan — jadwal otomatis disesuaikan`, date);
   else toast('Pengajuan tukar dinas terkirim, menunggu persetujuan admin');
 }
 function buildSwapRecommendationHtml(sched, from, to){
+  const dayNamesShort = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   let head = `<tr><th></th><th>Nama</th>`;
-  for(let d=from; d<=to; d++) head += `<th>${d}</th>`;
+  for(let d=from; d<=to; d++){
+    const dow = new Date(viewY, viewM - 1, d).getDay();
+    const isWknd = (dow === 0 || dow === 6);
+    head += `<th class="${isWknd?'weekend':''}"><div>${d}</div><div style="font-size:9px;font-weight:500;opacity:.85;letter-spacing:0;margin-top:2px;">${dayNamesShort[dow]}</div></th>`;
+  }
   head += `</tr>`;
   let body = personnel.map((p,idx)=>{
     let cells='';
     for(let d=from; d<=to; d++){
       const info = cellInfo(d, idx, sched, viewM, viewY);
+      const dow = new Date(viewY, viewM - 1, d).getDay();
+      const isWknd = (dow === 0 || dow === 6);
       const avail = sched.calendar[d-1].L2.includes(idx);
-      cells += `<td class="${info.cls}${avail?' avail':''}" title="${info.title}${avail?' · Tersedia untuk tukar dinas':''}">${info.label}</td>`;
+      cells += `<td class="${info.cls}${avail?' avail':''}${isWknd?' weekend':''}" title="${info.title}${avail?' · Tersedia untuk tukar dinas':''}">${info.label}</td>`;
     }
     return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}</tr>`;
   }).join('');
@@ -1466,6 +1544,7 @@ function buildSwapRecommendationHtml(sched, from, to){
     <div class="legend" style="margin-top:8px">
       <span><i style="background:rgba(46,125,79,.3);border:2px solid var(--green)"></i> Libur-2 — tersedia, boleh direkomendasikan</span>
       <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur-1 / sedang bertugas — tidak boleh diganggu</span>
+      <span><i style="background:#AAB8C6;border:1px solid #475569"></i> Sabtu / Minggu</span>
     </div>`;
 }
 function renderSwapPanel(area){
@@ -1501,18 +1580,22 @@ function renderSwapPanel(area){
 function renderSwapReqList(){
   const box = document.getElementById('swapReqList');
   if(!box) return;
+  const rt = realToday();
   const visible = isAdmin() ? swapList : swapList.filter(x=>x.requesterId===currentPersonnelId());
   box.innerHTML = visible.map(item=>{
     const req = personnel[item.requesterId], partner = personnel[item.partnerId];
     const label = `${req.name} → ${partner.name}: tgl ${item.date} · ${item.slot} (${monthTag(item.month,item.year)})${item.reason?' ('+item.reason+')':''}`;
     let actions = '';
+    const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && item.date <= rt.d);
     if(isAdmin() && item.status==='pending'){
       actions = `<div class="actions">
         <button class="small ok-btn" onclick="setStatus('swap',${item.id},'approved')">Setuju</button>
         <button class="small reject-btn" onclick="setStatus('swap',${item.id},'rejected')">Tolak</button>
       </div>`;
     } else if(isAdmin()){
-      actions = `<button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>`;
+      actions = (item.status==='approved' && isPastOrActive)
+        ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+        : `<button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>`;
     } else if(item.requesterId===currentPersonnelId()){
       actions = `<span class="badge ${item.status}">${item.status==='pending'?'Menunggu':item.status==='approved'?'Disetujui':'Ditolak'}</span>`;
     }
@@ -1592,6 +1675,7 @@ function renderRequestPanel(area, kind, ctx){
 function renderReqListById(boxId, kind){
   const box = document.getElementById(boxId);
   if(!box) return;
+  const rt = realToday();
   const list = kind==='cuti' ? cutiList : kuningList;
   const visible = isAdmin() ? list : list.filter(x=>x.personnelId===currentPersonnelId());
   const sorted = visible.slice().sort((a,b)=> b.id - a.id);
@@ -1601,13 +1685,16 @@ function renderReqListById(boxId, kind){
       ? `<span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}${item.reason?' · '+item.reason:''}</span>`
       : `<span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}</span>`;
     let actions = '';
+    const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && (item.end || item.start) <= rt.d);
     if(isAdmin() && item.status==='pending'){
       actions = `<div class="actions">
         <button class="small ok-btn" onclick="setStatus('${kind}',${item.id},'approved')">Setuju</button>
         <button class="small reject-btn" onclick="setStatus('${kind}',${item.id},'rejected')">Tolak</button>
       </div>`;
     } else if(isAdmin()){
-      actions = `<button class="x" onclick="removeReq('${kind}',${item.id})" aria-label="Hapus">×</button>`;
+      actions = (item.status==='approved' && isPastOrActive)
+        ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+        : `<button class="x" onclick="removeReq('${kind}',${item.id})" aria-label="Hapus">×</button>`;
     } else if(item.personnelId===currentPersonnelId()){
       actions = `<span class="badge ${item.status}">${item.status==='pending'?'Menunggu':item.status==='approved'?'Disetujui':'Ditolak'}</span>`;
     }
@@ -1663,6 +1750,16 @@ function addCutiByCtx(uid, ctx){
   if(!start){ warnBox.innerHTML='Pilih tanggal mulai yang valid.'; warnBox.classList.add('show'); return; }
   if(end<start){ warnBox.innerHTML='Tanggal selesai tidak boleh sebelum tanggal mulai.'; warnBox.classList.add('show'); return; }
 
+  const rt = realToday();
+  if(year < rt.y || (year===rt.y && month < rt.m)){
+    warnBox.innerHTML='⚠ Bulan ini sudah lewat, pengajuan cuti tidak dapat dilakukan.';
+    warnBox.classList.add('show'); return;
+  }
+  if(year === rt.y && month === rt.m && start <= rt.d){
+    warnBox.innerHTML=`⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Cuti hanya boleh diajukan mulai besok (tgl ${rt.d + 1} s/d ${daysInMonth()}).`;
+    warnBox.classList.add('show'); return;
+  }
+
   const conflict = lockedList.filter(l=>l.personnelId===personnelId && l.month===month && l.year===year && l.date>=start && l.date<=end);
   if(conflict.length){
     warnBox.innerHTML = `⚠ Tanggal ini sudah dikunci admin (${conflict.map(c=>'tgl '+c.date+' '+c.slot).join(', ')}). Cuti di tanggal terkunci harus lewat admin langsung.`;
@@ -1682,7 +1779,7 @@ function addCutiByCtx(uid, ctx){
     dbInsert('cuti_requests', {id:row.id, personnel_id:personnelId, start_day:start, end_day:end, reason, status, month, year});
     refreshAdminOrModal();
     updateNavBadges();
-    if(status==='approved') maybeRegenerate(month, year, `Cuti ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+    if(status==='approved') maybeRegenerate(month, year, `Cuti ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis disesuaikan`, start);
     else toast('Pengajuan cuti terkirim, menunggu persetujuan admin');
   };
 
@@ -1724,6 +1821,16 @@ function addKuningByCtx(uid, ctx){
   if(!start){ warnBox.innerHTML='Pilih tanggal mulai yang valid.'; warnBox.classList.add('show'); return; }
   if(end<start){ warnBox.innerHTML='Tanggal selesai tidak boleh sebelum tanggal mulai.'; warnBox.classList.add('show'); return; }
 
+  const rt = realToday();
+  if(year < rt.y || (year===rt.y && month < rt.m)){
+    warnBox.innerHTML='⚠ Bulan ini sudah lewat, pengajuan kuning tidak dapat dilakukan.';
+    warnBox.classList.add('show'); return;
+  }
+  if(year === rt.y && month === rt.m && start <= rt.d){
+    warnBox.innerHTML=`⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Kuning hanya boleh diajukan mulai besok (tgl ${rt.d + 1} s/d ${daysInMonth()}).`;
+    warnBox.classList.add('show'); return;
+  }
+
   const p = personnel[personnelId];
   const quota = effectiveKuningQuota(personnelId, year, month);
   const used = kuningUsedInMonth(personnelId, month, year);
@@ -1737,7 +1844,7 @@ function addKuningByCtx(uid, ctx){
     dbInsert('kuning_requests', {id:row.id, personnel_id:personnelId, start_day:start, end_day:end, status, month, year});
     refreshAdminOrModal();
     updateNavBadges();
-    if(status==='approved') maybeRegenerate(month, year, `Kuning ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+    if(status==='approved') maybeRegenerate(month, year, `Kuning ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis disesuaikan`, start);
     else toast('Pengajuan kuning terkirim, menunggu persetujuan admin');
   };
 
@@ -1756,9 +1863,9 @@ function addKuningByCtx(uid, ctx){
 /* =====================================================================
    HELPER UMUM untuk request
    ===================================================================== */
-function maybeRegenerate(month, year, message){
+function maybeRegenerate(month, year, message, triggerDay){
   if(!schedules[skey(year, month)]) return;
-  const re = generateAndStore(year, month);
+  const re = generateAndStore(year, month, triggerDay);
   renderMonthTabs();
   if(year===viewY && month===viewM) renderScheduleArea();
   toast(message + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
@@ -1776,13 +1883,24 @@ function setStatus(kind, id, status){
   dbUpdate(table, id, {status});
   refreshAdminOrModal();
   const label = reqLabel(kind), pname = reqPartyName(kind, item);
+  const triggerDay = item.start || item.date || 1;
+  const rt = realToday();
+  const hasPastOverlap = (item.year === rt.y && item.month === rt.m && (item.start || item.date) <= rt.d);
+  const extraNotice = hasPastOverlap ? ' (tgl 1 s/d hari ini tetap fix tidak berubah)' : '';
   maybeRegenerate(item.month, item.year, status==='approved'
-    ? `${label} ${pname} disetujui — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`
-    : `${label} ${pname} ditolak — jadwal ${monthNames[item.month-1]} ${item.year} otomatis dihitung ulang`);
+    ? `${label} ${pname} disetujui${extraNotice} — jadwal ${monthNames[item.month-1]} ${item.year} otomatis disesuaikan`
+    : `${label} ${pname} ditolak${extraNotice} — jadwal ${monthNames[item.month-1]} ${item.year} otomatis disesuaikan`, triggerDay);
   updateNavBadges();
 }
 function removeReq(kind, id){
   const item = getList(kind).find(x=>x.id===id);
+  if(!item) return;
+  const rt = realToday();
+  const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && (item.end || item.date || item.start) <= rt.d);
+  if(item.status==='approved' && isPastOrActive){
+    toast(`${reqLabel(kind)} ini tidak dapat dihapus karena tanggalnya sudah fix (aktif/sudah lewat).`);
+    return;
+  }
   if(kind==='cuti') cutiList = cutiList.filter(c=>c.id!==id);
   else if(kind==='kuning') kuningList = kuningList.filter(k=>k.id!==id);
   else swapList = swapList.filter(s=>s.id!==id);
@@ -1790,62 +1908,128 @@ function removeReq(kind, id){
   dbDelete(table, id);
   refreshAdminOrModal();
   updateNavBadges();
-  if(item && item.status==='approved'){
-    maybeRegenerate(item.month, item.year, `${reqLabel(kind)} ${reqPartyName(kind,item)} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`);
+  if(item.status==='approved'){
+    const triggerDay = item.start || item.date || 1;
+    maybeRegenerate(item.month, item.year, `${reqLabel(kind)} ${reqPartyName(kind,item)} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis disesuaikan`, triggerDay);
   }
 }
 
 /* =====================================================================
    SCHEDULE ENGINE
    ===================================================================== */
-function generateSchedule(year, month, initQueue, initCur){
-  const days = daysInMonthOf(year, month);
+function freezeBoundaryForMonth(year, month){
+  // Tanggal yang sudah lewat (termasuk hari ini) tidak boleh berubah lagi,
+  // walaupun ada perubahan cuti/kuning/lock/swap.
+  const rt = realToday();
+  if(year < rt.y || (year===rt.y && month < rt.m)) return daysInMonthOf(year, month); // bulan sudah lewat, semua dikunci
+  if(year === rt.y && month === rt.m) return rt.d; // bulan berjalan: kunci s/d hari ini
+  return 0; // bulan depan, belum ada yang perlu dikunci
+}
+
+function computeCell(day, pid, dayEntry, month, year){
+  const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===pid && c.month===month && c.year===year && day>=c.start && day<=c.end);
+  const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===pid && k.month===month && k.year===year && day>=k.start && day<=k.end);
+  const swappedOut = swapList.some(s=>s.status==='approved' && s.requesterId===pid && s.month===month && s.year===year && s.date===day);
+  const isPS = dayEntry && dayEntry.PS && dayEntry.PS.includes(pid);
+  const isM = dayEntry && dayEntry.M && dayEntry.M.includes(pid);
+  const locked = (isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || (isM && dayEntry.lockedM && dayEntry.lockedM.includes(pid));
+  const swappedIn = (isPS && dayEntry.swappedPS && dayEntry.swappedPS.includes(pid)) || (isM && dayEntry.swappedM && dayEntry.swappedM.includes(pid));
+  if(onCuti) return {cls:'slot-cuti', label:'C', title:'Cuti'};
+  if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning'};
+  if(swappedOut) return {cls:'slot-swap', label:'T', title:'Tukar dinas — jadwal hari ini digantikan personel lain'};
+  if(isPS) return {cls:'slot-PS'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'PS', title: locked?'PS (terkunci admin)': swappedIn?'PS (menggantikan, tukar dinas)':'Pagi Siang'};
+  if(isM) return {cls:'slot-M'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'M', title: locked?'M (terkunci admin)': swappedIn?'M (menggantikan, tukar dinas)':'Malam'};
+  if(dayEntry && dayEntry.L1 && dayEntry.L1.includes(pid)) return {cls:'slot-off', label:'–', title:'Libur-1 (baru pulang malam)'};
+  if(dayEntry && dayEntry.L2 && dayEntry.L2.includes(pid)) return {cls:'slot-off', label:'–', title:'Libur-2 (libur penuh)'};
+  return {cls:'slot-off', label:'–', title:'Menunggu giliran di antrian'};
+}
+
+function buildDayCellsSnapshot(day, dayEntry, month, year){
+  const cells = {};
+  personnel.forEach(p => {
+    cells[p.id] = computeCell(day, p.id, dayEntry, month, year);
+  });
+  return cells;
+}
+
+function deriveInitStateFromPrev(prevSched, year, month){
+  if(!prevSched || !prevSched.calendar || !prevSched.calendar.length) return null;
+  const cal = prevSched.calendar;
+  const len = cal.length;
+  const lastDay = cal[len - 1]; // hari terakhir bulan sebelumnya
+  const cur = {
+    PS: (lastDay.PS || []).slice(),
+    M: (lastDay.M || []).slice(),
+    L1: (lastDay.L1 || []).slice(),
+    L2: (lastDay.L2 || []).slice()
+  };
+  const inCur = new Set([...cur.PS, ...cur.M, ...cur.L1, ...cur.L2]);
   const order = personnel.slice().sort((a,b)=>a.rank-b.rank).map(p=>p.id);
+  const freePeople = order.filter(id => !inCur.has(id));
+  
+  // Prioritaskan personel yang total dinas di bulan sebelumnya paling sedikit (agar seimbang dan tidak 0 hari)
+  if(prevSched.monthPS && prevSched.monthM){
+    freePeople.sort((a,b) => {
+      const totA = (prevSched.monthPS[a]||0) + (prevSched.monthM[a]||0);
+      const totB = (prevSched.monthPS[b]||0) + (prevSched.monthM[b]||0);
+      return totA - totB;
+    });
+  }
+  return { initCur: cur, initQueue: freePeople };
+}
+
+function generateSchedule(year, month, initQueue, initCur, existingResult, triggerDay){
+  const days = daysInMonthOf(year, month);
+  const freezeBoundary = freezeBoundaryForMonth(year, month);
+
+  // Aturan perubahan minimal: jika ada perubahan di triggerDay (mis. tgl 27 saat hari ini tgl 25),
+  // maka tgl 26 tetap dipertahankan beku dari jadwal yang sudah ada (tgl 26 tidak berubah).
+  let effectiveFreeze = freezeBoundary;
+  if(existingResult && existingResult.calendar && existingResult.calendar.length >= days){
+    if(triggerDay && triggerDay > freezeBoundary){
+      effectiveFreeze = Math.max(freezeBoundary, triggerDay - 1);
+    }
+  }
+
+  const order = personnel.slice().sort((a,b)=>a.rank-b.rank).map(p=>p.id);
+  const effMax = {};
+  personnel.forEach(p=>{ effMax[p.id] = effectiveMaxQuota(p.id, year, month); });
+
   function isOnCuti(pid, day){ return cutiList.some(c=>c.status==='approved' && c.personnelId===pid && c.month===month && c.year===year && day>=c.start && day<=c.end); }
   function isOnKuning(pid, day){ return kuningList.some(k=>k.status==='approved' && k.personnelId===pid && k.month===month && k.year===year && day>=k.start && day<=k.end); }
   function isSwappedOut(pid, day){ return swapList.some(s=>s.status==='approved' && s.requesterId===pid && s.month===month && s.year===year && s.date===day); }
-  function eligible(pid, day){ return !isOnCuti(pid, day) && !isOnKuning(pid, day) && !isSwappedOut(pid, day); }
-  function removeFromArray(arr, id){ const i=arr.indexOf(id); if(i>=0) arr.splice(i,1); }
-  function takeNEligible(arr, day, n, exclude){
-    const taken=[]; let i=0;
-    while(taken.length<n && i<arr.length){
-      const id=arr[i];
-      if(exclude.includes(id)){ i++; continue; }
-      if(eligible(id, day)){ arr.splice(i,1); taken.push(id); } else { i++; }
-    }
-    return taken;
+  function isOverMaxQuota(pid){ return (monthPS[pid]+monthM[pid]) >= effMax[pid]; }
+  function ineligReason(pid, day){
+    if(isOnCuti(pid, day)) return 'cuti';
+    if(isOnKuning(pid, day)) return 'kuning';
+    if(isSwappedOut(pid, day)) return 'tukar dinas';
+    if(isOverMaxQuota(pid)) return `kuota maks ${effMax[pid]} hari/bulan tercapai`;
+    return null;
   }
+  function eligible(pid, day){ return ineligReason(pid, day)===null; }
+  function removeFromArray(arr, id){ const i=arr.indexOf(id); if(i>=0) arr.splice(i,1); }
+
+  // Fungsi pemilih dari waitQueue yang memprioritaskan akumulasi hari dinas terendah
+  // agar distribusi merata di 12-14 hari dan TIDAK ADA YANG 0 HARI
+  function takeBestEligible(arr, day, n, exclude){
+    const candidates = [];
+    for(let i=0; i<arr.length; i++){
+      const id = arr[i];
+      if(exclude.includes(id)) continue;
+      if(eligible(id, day)) candidates.push({ id, idx: i, shifts: (monthPS[id]||0) + (monthM[id]||0) });
+    }
+    candidates.sort((a,b) => a.shifts - b.shifts);
+    const chosen = candidates.slice(0, n).map(c => c.id);
+    chosen.forEach(id => removeFromArray(arr, id));
+    return chosen;
+  }
+
   const pairHistory = {};
   function pairKey(a,b){ return a<b ? a+'_'+b : b+'_'+a; }
   function pairCount(a,b){ return pairHistory[pairKey(a,b)] || 0; }
   function bumpPair(a,b){ const k=pairKey(a,b); pairHistory[k]=(pairHistory[k]||0)+1; }
   function bumpAllPairs(arr){ for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++) bumpPair(arr[i],arr[j]); }
-  const PAIR_WINDOW = 6;
-  function takePSPairDiverse(arr, day, exclude){
-    const idxs = [];
-    for(let i=0; i<arr.length && idxs.length<PAIR_WINDOW; i++){
-      const id = arr[i];
-      if(exclude.includes(id)) continue;
-      if(!eligible(id, day)) continue;
-      idxs.push(i);
-    }
-    if(idxs.length===0) return [];
-    if(idxs.length===1){ const id=arr[idxs[0]]; arr.splice(idxs[0],1); return [id]; }
-    let bestPair=null, bestScore=Infinity, bestPos=Infinity;
-    for(let a=0; a<idxs.length; a++){
-      for(let b=a+1; b<idxs.length; b++){
-        const id1=arr[idxs[a]], id2=arr[idxs[b]];
-        const score = pairCount(id1,id2);
-        const posScore = idxs[a]+idxs[b];
-        if(score<bestScore || (score===bestScore && posScore<bestPos)){ bestScore=score; bestPos=posScore; bestPair=[idxs[a],idxs[b]]; }
-      }
-    }
-    const [ia,ib] = bestPair;
-    const id1=arr[ia], id2=arr[ib];
-    const hi=Math.max(ia,ib), lo=Math.min(ia,ib);
-    arr.splice(hi,1); arr.splice(lo,1);
-    return [id1,id2];
-  }
+
   let waitQueue = initQueue ? initQueue.slice() : order.slice(CAP*2);
   let pendingM = [];
   let cur = initCur ? { PS:initCur.PS.slice(), M:initCur.M.slice(), L1:initCur.L1.slice(), L2:initCur.L2.slice() } : null;
@@ -1853,76 +2037,281 @@ function generateSchedule(year, month, initQueue, initCur){
   let logs = [];
   let monthPS={}, monthM={};
   personnel.forEach(p=>{ monthPS[p.id]=0; monthM[p.id]=0; });
+
   for(let day=1; day<=days; day++){
+    // --- TANGGAL BEKU (<= effectiveFreeze):
+    // Jadwal tanggal ini FIX 100%, salin persis dari hasil yang tersimpan sebelumnya agar tidak berubah. ---
+    if(existingResult && day<=effectiveFreeze && existingResult.calendar && existingResult.calendar[day-1]){
+      const frozenEntry = existingResult.calendar[day-1];
+      if(cur){ cur.L2.forEach(id=> waitQueue.push(id)); }
+      const todayFrozen = { PS: frozenEntry.PS.slice(), M: frozenEntry.M.slice(), L1: (frozenEntry.L1||[]).slice(), L2: (frozenEntry.L2||[]).slice() };
+      [...todayFrozen.PS, ...todayFrozen.M].forEach(id=>{ removeFromArray(waitQueue,id); removeFromArray(pendingM,id); });
+      bumpAllPairs(todayFrozen.PS);
+      bumpAllPairs(todayFrozen.M);
+      if(cur){
+        const missedM = cur.PS.filter(id => !todayFrozen.M.includes(id) && !todayFrozen.PS.includes(id));
+        missedM.forEach(id => { if(!pendingM.includes(id)) pendingM.push(id); });
+      }
+      const frozenCells = frozenEntry.cells ? JSON.parse(JSON.stringify(frozenEntry.cells)) : buildDayCellsSnapshot(day, frozenEntry, month, year);
+      calendar.push({
+        day, PS: todayFrozen.PS.slice(), M: todayFrozen.M.slice(), L1: todayFrozen.L1.slice(), L2: todayFrozen.L2.slice(),
+        lockedPS: (frozenEntry.lockedPS||[]).slice(), lockedM: (frozenEntry.lockedM||[]).slice(),
+        swappedPS: (frozenEntry.swappedPS||[]).slice(), swappedM: (frozenEntry.swappedM||[]).slice(),
+        cells: frozenCells
+      });
+      todayFrozen.PS.forEach(id=> monthPS[id]++);
+      todayFrozen.M.forEach(id=> monthM[id]++);
+      cur = todayFrozen;
+      continue;
+    }
+
+    // --- TANGGAL KE DEPAN (> effectiveFreeze):
     const adminLockPS = lockedList.filter(l=>l.date===day && l.slot==='PS' && l.month===month && l.year===year).map(l=>l.personnelId);
-    const adminLockM  = lockedList.filter(l=>l.date===day && l.slot==='M' && l.month===month && l.year===year).map(l=>l.personnelId);
-    const swapInPS = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
-    const swapInM  = swapList.filter(s=>s.status==='approved' && s.slot==='M'  && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
-    const lockPSList = Array.from(new Set([...adminLockPS, ...swapInPS])).slice(0,CAP);
-    const lockMList  = Array.from(new Set([...adminLockM,  ...swapInM ])).slice(0,CAP);
-    let today = { PS: lockPSList.slice(), M: lockMList.slice(), L1:[], L2:[] };
-    [...lockPSList, ...lockMList].forEach(id=>{ removeFromArray(waitQueue,id); removeFromArray(pendingM,id); });
+    const adminLockM  = lockedList.filter(l=>l.date===day && l.slot==='M'  && l.month===month && l.year===year).map(l=>l.personnelId);
+    const swapInPS    = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
+    const swapInM     = swapList.filter(s=>s.status==='approved' && s.slot==='M'  && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
+    const swapOutPS   = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.requesterId);
+    const swapOutM    = swapList.filter(s=>s.status==='approved' && s.slot==='M'  && s.date===day && s.month===month && s.year===year).map(s=>s.requesterId);
+
     adminLockPS.forEach(id=> logs.push({type:'info', text:`Tgl ${day}: PS dikunci untuk ${personnel[id].name} (perintah atasan).`}));
     adminLockM.forEach(id=> logs.push({type:'info', text:`Tgl ${day}: M dikunci untuk ${personnel[id].name} (perintah atasan).`}));
     swapInPS.forEach(id=>{ const s=swapList.find(x=>x.status==='approved'&&x.slot==='PS'&&x.date===day&&x.month===month&&x.year===year&&x.partnerId===id);
       logs.push({type:'info', text:`Tgl ${day}: PS ditukar — ${personnel[id].name} menggantikan ${s?personnel[s.requesterId].name:'?'} (tukar dinas).`}); });
     swapInM.forEach(id=>{ const s=swapList.find(x=>x.status==='approved'&&x.slot==='M'&&x.date===day&&x.month===month&&x.year===year&&x.partnerId===id);
       logs.push({type:'info', text:`Tgl ${day}: M ditukar — ${personnel[id].name} menggantikan ${s?personnel[s.requesterId].name:'?'} (tukar dinas).`}); });
+
+    // === KONDISI A: JIKA SUDAH ADA JADWAL BASELINE (PENYESUAIAN LOKAL) ===
+    // Pertahankan jadwal yang sudah ada! Hanya sesuaikan slot yang berhalangan atau terkena lock.
+    // Aturan ketat: "cukup dia dulu dengan salah satu partner aja, jangan semuanya berubah".
+    if(existingResult && existingResult.calendar && existingResult.calendar[day-1]){
+      const baseDay = existingResult.calendar[day-1];
+      let todayPS = (baseDay.PS || []).slice();
+      let todayM  = (baseDay.M  || []).slice();
+
+      // 1. Keluarkan personel yang berhalangan di tanggal ini (Cuti, Kuning, atau Swapped Out)
+      todayPS = todayPS.filter(pid => eligible(pid, day) && !swapOutPS.includes(pid));
+      todayM  = todayM.filter(pid => eligible(pid, day) && !swapOutM.includes(pid));
+
+      let displaced = [];
+
+      // 2. Terapkan Lock & Swap In untuk PS:
+      const wantedPS = Array.from(new Set([...adminLockPS, ...swapInPS])).slice(0, CAP);
+      wantedPS.forEach(pid => {
+        if(todayPS.includes(pid)) return; // sudah ada di PS
+        removeFromArray(todayM, pid); // pindahkan dari M jika sebelumnya di M
+
+        if(todayPS.length >= CAP){
+          // Ganti SALAH SATU partner (prioritaskan yang belum di-lock dan beban dinasnya paling banyak).
+          // Partner yang satu lagi TETAP dipertahankan!
+          let replaceIdx = -1;
+          for(let i = todayPS.length - 1; i >= 0; i--){
+            if(!wantedPS.includes(todayPS[i])){
+              if(replaceIdx === -1 || ((monthPS[todayPS[i]] + monthM[todayPS[i]]) > (monthPS[todayPS[replaceIdx]] + monthM[todayPS[replaceIdx]]))){
+                replaceIdx = i;
+              }
+            }
+          }
+          if(replaceIdx >= 0){
+            displaced.push(todayPS[replaceIdx]);
+            todayPS[replaceIdx] = pid;
+          }
+        } else {
+          todayPS.push(pid);
+        }
+      });
+
+      // 3. Terapkan Lock & Swap In untuk M:
+      const wantedM = Array.from(new Set([...adminLockM, ...swapInM])).slice(0, CAP);
+      wantedM.forEach(pid => {
+        if(todayM.includes(pid)) return;
+        removeFromArray(todayPS, pid);
+
+        if(todayM.length >= CAP){
+          let replaceIdx = -1;
+          for(let i = todayM.length - 1; i >= 0; i--){
+            if(!wantedM.includes(todayM[i])){
+              if(replaceIdx === -1 || ((monthPS[todayM[i]] + monthM[todayM[i]]) > (monthPS[todayM[replaceIdx]] + monthM[todayM[replaceIdx]]))){
+                replaceIdx = i;
+              }
+            }
+          }
+          if(replaceIdx >= 0){
+            displaced.push(todayM[replaceIdx]);
+            todayM[replaceIdx] = pid;
+          }
+        } else {
+          todayM.push(pid);
+        }
+      });
+
+      // 4. Jika ada slot PS yang kurang (< CAP, misal akibat cuti/swap):
+      let psNeeded = CAP - todayPS.length;
+      if(psNeeded > 0){
+        for(let i = displaced.length - 1; i >= 0 && psNeeded > 0; i--){
+          const dId = displaced[i];
+          if(!todayPS.includes(dId) && !todayM.includes(dId) && eligible(dId, day) && !(cur && cur.M && cur.M.includes(dId))){
+            todayPS.push(dId);
+            displaced.splice(i, 1);
+            psNeeded--;
+          }
+        }
+      }
+      if(psNeeded > 0){
+        const exclude = todayPS.concat(todayM);
+        if(cur && cur.M) exclude.push(...cur.M);
+        const candidates = personnel.map(p=>p.id).filter(id => !exclude.includes(id) && eligible(id, day));
+        candidates.sort((a,b) => (monthPS[a]+monthM[a]) - (monthPS[b]+monthM[b]));
+        const chosen = candidates.slice(0, psNeeded);
+        chosen.forEach(id => todayPS.push(id));
+      }
+
+      // 5. Jika ada slot M yang kurang (< CAP):
+      let mNeeded = CAP - todayM.length;
+      if(mNeeded > 0){
+        for(let i = displaced.length - 1; i >= 0 && mNeeded > 0; i--){
+          const dId = displaced[i];
+          if(!todayPS.includes(dId) && !todayM.includes(dId) && eligible(dId, day)){
+            todayM.push(dId);
+            displaced.splice(i, 1);
+            mNeeded--;
+          }
+        }
+      }
+      if(mNeeded > 0){
+        const exclude = todayPS.concat(todayM);
+        const candidates = personnel.map(p=>p.id).filter(id => !exclude.includes(id) && eligible(id, day));
+        candidates.sort((a,b) => (monthPS[a]+monthM[a]) - (monthPS[b]+monthM[b]));
+        const chosen = candidates.slice(0, mNeeded);
+        chosen.forEach(id => todayM.push(id));
+      }
+
+      let todayL1 = cur ? cur.M.slice() : (baseDay.L1 || []).slice();
+      let todayL2 = cur ? cur.L1.slice() : (baseDay.L2 || []).slice();
+      if(cur && cur.L2){ cur.L2.forEach(id => { if(!waitQueue.includes(id)) waitQueue.push(id); }); }
+      [...todayPS, ...todayM].forEach(id => removeFromArray(waitQueue, id));
+
+      bumpAllPairs(todayPS);
+      bumpAllPairs(todayM);
+      const dayCells = buildDayCellsSnapshot(day, { PS: todayPS, M: todayM }, month, year);
+      calendar.push({
+        day, PS: todayPS.slice(), M: todayM.slice(), L1: todayL1.slice(), L2: todayL2.slice(),
+        lockedPS: adminLockPS.slice(), lockedM: adminLockM.slice(), swappedPS: swapInPS.slice(), swappedM: swapInM.slice(),
+        cells: dayCells
+      });
+      todayPS.forEach(id => monthPS[id]++);
+      todayM.forEach(id => monthM[id]++);
+      cur = { PS: todayPS.slice(), M: todayM.slice(), L1: todayL1.slice(), L2: todayL2.slice() };
+      continue;
+    }
+
+    // === KONDISI B: GENERATE AWAL DARI NOL (FRESH ROTATION) ===
+    const lockPSList = Array.from(new Set([...adminLockPS, ...swapInPS])).slice(0,CAP);
+    const lockMList  = Array.from(new Set([...adminLockM,  ...swapInM ])).slice(0,CAP);
+    let today = { PS: lockPSList.slice(), M: lockMList.slice(), L1:[], L2:[] };
+    [...lockPSList, ...lockMList].forEach(id=>{ removeFromArray(waitQueue,id); removeFromArray(pendingM,id); });
+
     let naturalM = [];
     let isBootstrap = (cur === null);
-    if(isBootstrap){ naturalM = order.slice(CAP, CAP*2); }
-    else {
+    if(isBootstrap){
+      naturalM = order.slice(CAP, CAP*2);
+    } else {
       today.L1 = cur.M.slice();
       today.L2 = cur.L1.slice();
       cur.L2.forEach(id=> waitQueue.push(id));
       naturalM = cur.PS.slice();
     }
+
     naturalM.forEach(id=>{
       if(today.PS.includes(id) || today.M.includes(id)) return;
       if(today.M.length>=CAP){ pendingM.push(id); logs.push({type:'info', text:`Tgl ${day}: giliran M ${personnel[id].name} tertunda, slot penuh oleh lock.`}); return; }
       if(eligible(id, day)) today.M.push(id);
-      else { pendingM.push(id); logs.push({type:'bad', text:`Tgl ${day}: giliran M ${personnel[id].name} tertunda (cuti/kuning).`}); }
+      else { pendingM.push(id); logs.push({type:'bad', text:`Tgl ${day}: giliran M ${personnel[id].name} tertunda (${ineligReason(id, day)}).`}); }
     });
+
     let mNeeded = CAP - today.M.length;
     if(mNeeded>0){
-      const fromPending = takeNEligible(pendingM, day, mNeeded, today.PS.concat(today.M));
+      const fromPending = takeBestEligible(pendingM, day, mNeeded, today.PS.concat(today.M));
       fromPending.forEach(id=>{ today.M.push(id); logs.push({type:'info', text:`Tgl ${day}: giliran M tertunda ${personnel[id].name} terpenuhi.`}); });
       mNeeded = CAP - today.M.length;
     }
     if(mNeeded>0){
-      const fromQueue = takeNEligible(waitQueue, day, mNeeded, today.PS.concat(today.M));
+      const fromQueue = takeBestEligible(waitQueue, day, mNeeded, today.PS.concat(today.M));
       fromQueue.forEach(id=> today.M.push(id));
       mNeeded = CAP - today.M.length;
       if(mNeeded>0) logs.push({type:'bad', text:`Tgl ${day}: slot M kurang ${mNeeded} orang.`});
     }
-    if(isBootstrap){
-      order.slice(0,CAP).forEach(id=>{
-        if(today.PS.includes(id) || today.M.includes(id)) return;
-        if(eligible(id, day)) today.PS.push(id);
-        else { waitQueue.push(id); logs.push({type:'bad', text:`Tgl 1: ${personnel[id].name} rencana PS tapi cuti/kuning, digeser ke antrian.`}); }
-      });
-    }
+
     let psNeeded = CAP - today.PS.length;
     if(psNeeded>0){
-      const exclude = today.PS.concat(today.M);
-      const fromQueue = psNeeded===2 ? takePSPairDiverse(waitQueue, day, exclude) : takeNEligible(waitQueue, day, psNeeded, exclude);
+      const exclude = today.PS.concat(today.M).concat(today.L1);
+      const fromQueue = takeBestEligible(waitQueue, day, psNeeded, exclude);
       fromQueue.forEach(id=> today.PS.push(id));
       psNeeded = CAP - today.PS.length;
       if(psNeeded>0) logs.push({type:'bad', text:`Tgl ${day}: slot PS kurang ${psNeeded} orang.`});
     }
+
     bumpAllPairs(today.PS);
     bumpAllPairs(today.M);
-    calendar.push({ day, PS: today.PS.slice(), M: today.M.slice(), L1: today.L1.slice(), L2: today.L2.slice(),
-      lockedPS: adminLockPS.slice(), lockedM: adminLockM.slice(), swappedPS: swapInPS.slice(), swappedM: swapInM.slice() });
+    const dayCells = buildDayCellsSnapshot(day, today, month, year);
+    calendar.push({
+      day, PS: today.PS.slice(), M: today.M.slice(), L1: today.L1.slice(), L2: today.L2.slice(),
+      lockedPS: adminLockPS.slice(), lockedM: adminLockM.slice(), swappedPS: swapInPS.slice(), swappedM: swapInM.slice(),
+      cells: dayCells
+    });
     today.PS.forEach(id=> monthPS[id]++);
     today.M.forEach(id=> monthM[id]++);
     cur = today;
   }
+
+  // --- SAFETY AUDIT PASS: ANTI-0 HARI & PEMERATAAN DINAS 12-14 HARI ---
+  // Hanya dijalankan saat generate awal dari nol, agar tidak mengacak-acak jadwal yang sedang disesuaikan
+  const isFreshGen = (!existingResult || !existingResult.calendar || existingResult.calendar.length < days);
+  if(isFreshGen){
+    const targetMin = Math.min(11, Math.floor((days * 4) / personnel.length) - 1);
+    const targetMax = Math.ceil((days * 4) / personnel.length) + 1;
+    for(let p of personnel){
+      const totCuti = cutiList.filter(c=>c.status==='approved' && c.personnelId===p.id && c.month===month && c.year===year).reduce((s,c)=>s+(c.end-c.start+1),0);
+      if(totCuti < 15 && (monthPS[p.id] + monthM[p.id]) < targetMin){
+        for(let d=freezeBoundary+1; d<=days; d++){
+          if((monthPS[p.id] + monthM[p.id]) >= targetMin) break;
+          const entry = calendar[d-1];
+          if(!entry || !eligible(p.id, d)) continue;
+          if(entry.PS.includes(p.id) || entry.M.includes(p.id) || entry.L1.includes(p.id)) continue;
+          
+          let donor = null, donorSlot = null;
+          for(let dId of entry.PS){
+            if((monthPS[dId] + monthM[dId]) > targetMax && !entry.lockedPS.includes(dId) && !entry.swappedPS.includes(dId)){
+              donor = dId; donorSlot = 'PS'; break;
+            }
+          }
+          if(!donor){
+            for(let dId of entry.M){
+              if((monthPS[dId] + monthM[dId]) > targetMax && !entry.lockedM.includes(dId) && !entry.swappedM.includes(dId)){
+                donor = dId; donorSlot = 'M'; break;
+              }
+            }
+          }
+          if(donor){
+            if(donorSlot === 'PS'){
+              entry.PS = entry.PS.map(x => x===donor ? p.id : x);
+              monthPS[donor]--; monthPS[p.id]++;
+            } else {
+              entry.M = entry.M.map(x => x===donor ? p.id : x);
+              monthM[donor]--; monthM[p.id]++;
+            }
+            entry.cells = buildDayCellsSnapshot(d, entry, month, year);
+            logs.push({type:'info', text:`Pemerataan tgl ${d}: ${personnel[donor].name} dialihkan ke ${p.name} agar dinas seimbang (anti-0 hari).`});
+          }
+        }
+      }
+    }
+  }
+
   const partnerSets = {};
   personnel.forEach(p=> partnerSets[p.id] = new Set());
   calendar.forEach(d=>{
     [d.PS, d.M].forEach(arr=>{
-      for(let i=0;i<arr.length;i++) for(let j=0;j<arr.length;j++) if(i!==j) partnerSets[arr[i]].add(arr[j]);
+      for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++) if(i!==j) partnerSets[arr[i]].add(arr[j]);
     });
   });
   const sizes = personnel.map(p=> partnerSets[p.id].size);
@@ -1931,19 +2320,34 @@ function generateSchedule(year, month, initQueue, initCur){
   logs.unshift({type:'info', text:`Variasi pasangan bulan ini: rata-rata tiap personel bertemu ${avgPartner.toFixed(1)} partner berbeda (dari maksimal ${maxPossible}).`});
   return { calendar, monthPS, monthM, logs, days, endQueue: waitQueue.slice(), endCur: cur };
 }
-function generateAndStore(y, m){
+
+function generateAndStore(y, m, triggerDay){
   const pv = prevMonthYear(y, m);
   const prev = schedules[skey(pv.y, pv.m)];
-  const res = prev ? generateSchedule(y, m, prev.endQueue, prev.endCur) : generateSchedule(y, m, null, null);
+  const existingThis = schedules[skey(y, m)];
+
+  let initQueue = null, initCur = null;
+  if(prev && prev.calendar && prev.calendar.length){
+    const derived = deriveInitStateFromPrev(prev, y, m);
+    if(derived){
+      initCur = derived.initCur;
+      initQueue = derived.initQueue;
+    }
+  }
+
+  const res = generateSchedule(y, m, initQueue, initCur, existingThis, triggerDay);
   res.logs.unshift({type:'info', text: prev
-    ? `Rotasi disambung dari akhir ${monthNames[pv.m-1]} ${pv.y}.`
+    ? `Rotasi disambung dari pola 4 hari terakhir ${monthNames[pv.m-1]} ${pv.y}.`
     : `${monthNames[m-1]} ${y} dimulai dari urutan antrian awal (bulan sebelumnya belum digenerate).`});
   schedules[skey(y, m)] = res;
   persistSchedule(y, m, res);
+
   let regenerated = 0, last = res, n = nextMonthYear(y, m);
-  while(schedules[skey(n.y, n.m)]){
-    const r = generateSchedule(n.y, n.m, last.endQueue, last.endCur);
-    r.logs.unshift({type:'info', text:`Rotasi disambung dari akhir ${monthNames[prevMonthYear(n.y,n.m).m-1]} ${prevMonthYear(n.y,n.m).y}.`});
+  while(schedules[skey(n.y, n.m)] && !triggerDay){
+    const existingNext = schedules[skey(n.y, n.m)];
+    const derivedNext = deriveInitStateFromPrev(last, n.y, n.m);
+    const r = generateSchedule(n.y, n.m, derivedNext ? derivedNext.initQueue : last.endQueue, derivedNext ? derivedNext.initCur : last.endCur, existingNext);
+    r.logs.unshift({type:'info', text:`Rotasi disambung dari pola 4 hari terakhir ${monthNames[prevMonthYear(n.y,n.m).m-1]} ${prevMonthYear(n.y,n.m).y}.`});
     schedules[skey(n.y, n.m)] = r;
     persistSchedule(n.y, n.m, r);
     last = r; regenerated++;
@@ -1951,31 +2355,35 @@ function generateAndStore(y, m){
   }
   return regenerated;
 }
+
 document.getElementById('btnGenerate').addEventListener('click', ()=>{
   const re = generateAndStore(viewY, viewM);
   renderAll();
-  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
+  const rt = realToday();
+  const isCurrent = (viewY === rt.y && viewM === rt.m);
+  const infoText = isCurrent ? ` (tgl 1 s/d ${rt.d} fix, tgl ${rt.d+1} s/d akhir bulan disesuaikan)` : '';
+  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat${infoText}` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
 });
 
 /* =====================================================================
    RENDER JADWAL
    ===================================================================== */
 function cellInfo(day, personnelId, result, month, year){
-  const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===personnelId && c.month===month && c.year===year && day>=c.start && day<=c.end);
-  const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===personnelId && k.month===month && k.year===year && day>=k.start && day<=k.end);
-  const swappedOut = swapList.some(s=>s.status==='approved' && s.requesterId===personnelId && s.month===month && s.year===year && s.date===day);
-  const d = result.calendar[day-1];
-  const isPS = d.PS.includes(personnelId), isM = d.M.includes(personnelId);
-  const locked = (isPS && d.lockedPS.includes(personnelId)) || (isM && d.lockedM.includes(personnelId));
-  const swappedIn = (isPS && d.swappedPS && d.swappedPS.includes(personnelId)) || (isM && d.swappedM && d.swappedM.includes(personnelId));
-  if(onCuti) return {cls:'slot-cuti', label:'C', title:'Cuti'};
-  if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning'};
-  if(swappedOut) return {cls:'slot-swap', label:'T', title:'Tukar dinas — jadwal hari ini digantikan personel lain'};
-  if(isPS) return {cls:'slot-PS'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'PS', title: locked?'PS (terkunci admin)': swappedIn?'PS (menggantikan, tukar dinas)':'Pagi Siang'};
-  if(isM) return {cls:'slot-M'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'M', title: locked?'M (terkunci admin)': swappedIn?'M (menggantikan, tukar dinas)':'Malam'};
-  if(d.L1.includes(personnelId)) return {cls:'slot-off', label:'–', title:'Libur-1 (baru pulang malam)'};
-  if(d.L2.includes(personnelId)) return {cls:'slot-off', label:'–', title:'Libur-2 (libur penuh)'};
-  return {cls:'slot-off', label:'–', title:'Menunggu giliran di antrian'};
+  const freezeBoundary = freezeBoundaryForMonth(year, month);
+  const d = result && result.calendar && result.calendar[day-1];
+  if(!d) return {cls:'slot-off', label:'–', title:'-'};
+
+  // Tanggal yang sudah lewat atau tanggal aktif (<= freezeBoundary) WAJIB FIX 100%!
+  if(day <= freezeBoundary){
+    if(d.cells && d.cells[personnelId]) return d.cells[personnelId];
+    if(!d.cells) d.cells = {};
+    d.cells[personnelId] = computeCell(day, personnelId, d, month, year);
+    return d.cells[personnelId];
+  }
+
+  // Tanggal ke depan
+  if(d.cells && d.cells[personnelId]) return d.cells[personnelId];
+  return computeCell(day, personnelId, d, month, year);
 }
 function selectionEnd(year, month, days){
   const rt = realToday();
@@ -1995,12 +2403,13 @@ function buildScheduleBlockHtml(year, month){
       <span><i style="background:#DDEFEE;border:1px solid #0A4552"></i> PS</span>
       <span><i style="background:#E6E1F5;border:1px solid #3B2E75"></i> M</span>
       <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur/antre</span>
+      <span><i style="background:#AAB8C6;border:1px solid #475569"></i> Sabtu / Minggu (abu-abu)</span>
       <span><i style="background:var(--red)"></i> Cuti</span>
       <span><i style="background:var(--kuning)"></i> Kuning</span>
       <span><i style="background:#fff;border:2px solid var(--indigo)"></i> Terkunci admin</span>
       <span><i style="background:#D7ECEA;border:1px solid #0F6B5C"></i> Ditukar (digantikan)</span>
       <span><i style="background:#fff;border:2px dashed var(--green)"></i> Pengganti (tukar dinas)</span>
-      <span><i style="background:rgba(31,95,191,.25);border:2px solid var(--blue)"></i> Tanggal 1 s/d hari ini</span>
+      <span><i style="background:rgba(31,95,191,.25);border:2px solid var(--blue)"></i> Tanggal 1 s/d hari ini (fix &amp; terkunci permanen)</span>
     </div>
     <div class="log" id="logBox"></div>
   </div>`;
@@ -2009,20 +2418,26 @@ function fillScheduleBlock(year, month, result){
   const rt = realToday();
   const selTo = selectionEnd(year, month, result.days);
   const isTodayCol = d => year===rt.y && month===rt.m && d===rt.d;
+  const dayNamesShort = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   let head = `<tr><th></th><th>Nama</th>`;
   for(let d=1; d<=result.days; d++){
-    let cls = '';
-    if(d<=selTo){ cls = 'sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (isTodayCol(d)?' today':''); }
-    head += `<th class="${cls}">${d}</th>`;
+    const dow = new Date(year, month - 1, d).getDay();
+    const isWknd = (dow === 0 || dow === 6);
+    let cls = isWknd ? 'weekend' : '';
+    if(d<=selTo){ cls += (cls?' ':'') + 'sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (isTodayCol(d)?' today':''); }
+    head += `<th class="${cls}"><div>${d}</div><div style="font-size:9px;font-weight:500;opacity:.85;letter-spacing:0;margin-top:2px;">${dayNamesShort[dow]}</div></th>`;
   }
   head += `<th class="total">PS</th><th class="total">M</th><th class="total">Total</th></tr>`;
   let body = personnel.map((p,idx)=>{
     let cells='';
     for(let d=1; d<=result.days; d++){
       const info = cellInfo(d, idx, result, month, year);
+      const dow = new Date(year, month - 1, d).getDay();
+      const isWknd = (dow === 0 || dow === 6);
       let sel = '';
       if(d<=selTo){ sel = ' sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (idx===personnel.length-1?' sel-b':''); }
-      cells += `<td class="${info.cls}${sel}" title="${info.title}">${info.label}</td>`;
+      const wkndCls = isWknd ? ' weekend' : '';
+      cells += `<td class="${info.cls}${sel}${wkndCls}" title="${info.title}">${info.label}</td>`;
     }
     return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}
       <td class="total">${result.monthPS[idx]}</td><td class="total">${result.monthM[idx]}</td>
@@ -2095,7 +2510,10 @@ document.getElementById('btnAdminGenerate').addEventListener('click', ()=>{
   renderMonthTabs();
   renderScheduleArea();
   renderAdminPanel();
-  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
+  const rt = realToday();
+  const isCurrent = (viewY === rt.y && viewM === rt.m);
+  const infoText = isCurrent ? ` (tgl 1 s/d ${rt.d} fix, tgl ${rt.d+1} s/d akhir bulan disesuaikan)` : '';
+  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat${infoText}` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
 });
 document.getElementById('btnAdminPrint').addEventListener('click', ()=>{
   adminTab = 'print';
@@ -2185,6 +2603,7 @@ function renderAdminSetup(body){
             <div class="note" style="margin:0">
               Nomor 1 &amp; 2 jadi PS pertama, nomor 3 &amp; 4 jadi M pertama di tanggal 1. Bulan berikutnya melanjutkan dari posisi antrian akhir bulan sebelumnya.<br><br>
               <b>Kuota kuning</b> = basis per bulan. Kalau bulan lalu habis dipakai penuh, bulan ini turun ke ±70% (min ${KUNING_MIN_QUOTA}); kembali ke basis begitu ada bulan yang tidak habis dipakai.<br><br>
+              <b>Maks hari dinas/bulan</b> = batas PS+M per orang per bulan (basis 14). Kalau bulan lalu tepat mencapai batas ini, bulan berikutnya turun ke ±70% (min ${MAXDAYS_MIN_QUOTA}); kembali ke basis begitu ada bulan yang tidak mencapai batas. Untuk kasus darurat (mis. menutup cuti dadakan orang lain) admin tetap bisa menugaskan lewat <b>Lock admin</b> meski kuota sudah habis, atau menaikkan angka basisnya di sini secara manual.<br><br>
               <b>Sisa cuti</b> dihitung per tahun kalender (ganti tahun di header untuk tahun lain).
             </div>
           </div>
@@ -2208,6 +2627,7 @@ function renderAdminSetup(body){
       <th>Nama</th>
       <th style="width:100px">Urutan</th>
       <th style="width:120px">Kuota kuning</th>
+      <th style="width:120px">Maks hari/bln</th>
       <th style="width:110px">Sisa cuti ${viewY}</th>
     </tr></thead><tbody>` +
     personnel.map(p=>`<tr>
@@ -2215,6 +2635,7 @@ function renderAdminSetup(body){
       <td>${p.name}</td>
       <td><input type="number" min="1" max="${personnel.length}" value="${p.rank}" onchange="personnel[${p.id}].rank=parseInt(this.value)||${p.rank}; persistPersonnelField(${p.id},'rank',personnel[${p.id}].rank);"></td>
       <td><input type="number" min="0" max="31" value="${p.kuningQuota}" onchange="personnel[${p.id}].kuningQuota=parseInt(this.value)||0; persistPersonnelField(${p.id},'kuningQuota',personnel[${p.id}].kuningQuota);"></td>
+      <td><input type="number" min="1" max="31" value="${p.maxQuota}" onchange="personnel[${p.id}].maxQuota=parseInt(this.value)||14; persistPersonnelField(${p.id},'maxQuota',personnel[${p.id}].maxQuota);"></td>
       <td><input type="number" min="0" max="60" value="${cutiBalanceForYear(p.id, viewY)}" onchange="setCutiBalance(${p.id}, ${viewY}, this.value); refreshAdminOrModal();"></td>
     </tr>`).join('') + `</tbody>`;
 }
@@ -2302,19 +2723,24 @@ function renderAdminCuti(body){
     </div>`;
 
   renderRequestPanel(document.getElementById('adminCutiForm'), 'cuti', 'admin');
+  const rt = realToday();
   const list = cutiList.slice().sort((a,b)=> b.id - a.id);
   document.getElementById('adminCutiList').innerHTML = list.length ? list.map(item=>{
     const p = personnel[item.personnelId];
     let actions = '';
+    const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && (item.end || item.start) <= rt.d);
     if(item.status==='pending'){
       actions = `<div class="actions">
         <button class="small ok-btn" onclick="setStatus('cuti',${item.id},'approved')">Setuju</button>
         <button class="small reject-btn" onclick="setStatus('cuti',${item.id},'rejected')">Tolak</button>
       </div>`;
     } else {
+      const btnOrBadge = (item.status==='approved' && isPastOrActive)
+        ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+        : `<button class="x" onclick="removeReq('cuti',${item.id})" aria-label="Hapus">×</button>`;
       actions = `<div class="actions">
         <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
-        <button class="x" onclick="removeReq('cuti',${item.id})" aria-label="Hapus">×</button>
+        ${btnOrBadge}
       </div>`;
     }
     return `<div class="reqrow ${item.status}">
@@ -2363,19 +2789,24 @@ function renderAdminKuning(body){
     </div>`;
 
   renderRequestPanel(document.getElementById('adminKuningForm'), 'kuning', 'admin');
+  const rt = realToday();
   const list = kuningList.slice().sort((a,b)=> b.id - a.id);
   document.getElementById('adminKuningList').innerHTML = list.length ? list.map(item=>{
     const p = personnel[item.personnelId];
     let actions = '';
+    const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && (item.end || item.start) <= rt.d);
     if(item.status==='pending'){
       actions = `<div class="actions">
         <button class="small ok-btn" onclick="setStatus('kuning',${item.id},'approved')">Setuju</button>
         <button class="small reject-btn" onclick="setStatus('kuning',${item.id},'rejected')">Tolak</button>
       </div>`;
     } else {
+      const btnOrBadge = (item.status==='approved' && isPastOrActive)
+        ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+        : `<button class="x" onclick="removeReq('kuning',${item.id})" aria-label="Hapus">×</button>`;
       actions = `<div class="actions">
         <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
-        <button class="x" onclick="removeReq('kuning',${item.id})" aria-label="Hapus">×</button>
+        ${btnOrBadge}
       </div>`;
     }
     return `<div class="reqrow ${item.status}">
@@ -2438,15 +2869,19 @@ function renderAdminSwap(body){
   document.getElementById('adminSwapList').innerHTML = list.length ? list.map(item=>{
     const req = personnel[item.requesterId], partner = personnel[item.partnerId];
     let actions = '';
+    const isPastOrActive = (item.year < rt.y) || (item.year === rt.y && item.month < rt.m) || (item.year === rt.y && item.month === rt.m && item.date <= rt.d);
     if(item.status==='pending'){
       actions = `<div class="actions">
         <button class="small ok-btn" onclick="setStatus('swap',${item.id},'approved')">Setuju</button>
         <button class="small reject-btn" onclick="setStatus('swap',${item.id},'rejected')">Tolak</button>
       </div>`;
     } else {
+      const btnOrBadge = (item.status==='approved' && isPastOrActive)
+        ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+        : `<button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>`;
       actions = `<div class="actions">
         <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
-        <button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>
+        ${btnOrBadge}
       </div>`;
     }
     return `<div class="reqrow ${item.status}">
@@ -2492,12 +2927,17 @@ function renderAdminLock(body){
 function renderAdminLockList(){
   const box = document.getElementById('adminLockList');
   if(!box) return;
+  const rt = realToday();
   const list = lockedList.slice().sort((a,b)=> a.month-b.month || a.date-b.date);
   box.innerHTML = list.length ? list.map(l=>{
     const p = personnel[l.personnelId];
+    const isPastOrActive = (l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d);
+    const actionHtml = isPastOrActive
+      ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
+      : `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
     return `<div class="reqrow approved">
       <span><span class="who">${p.name}</span><span class="meta">Tgl ${l.date} · ${l.slot} · ${monthTag(l.month,l.year)}${l.reason?' · '+l.reason:''}</span></span>
-      <button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>
+      ${actionHtml}
     </div>`;
   }).join('') : `<div class="admin-empty">Belum ada lock admin.</div>`;
 }
