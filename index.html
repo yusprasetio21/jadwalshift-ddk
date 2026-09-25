@@ -1,0 +1,2725 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulator Jadwal Shift — Pengelola Database BMKG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#F4F6F9; --panel:#FFFFFF; --ink:#0F1B2D; --ink-soft:#5A6B7E; --line:#DCE3EA;
+    --teal:#0E5C6E; --teal-dark:#0A4552; --teal-pale:#E6F1F3;
+    --amber:#C97A25; --amber-pale:#FBEBD3;
+    --red:#B23A2E; --red-pale:#F6DCD8;
+    --kuning:#F2C230; --kuning-ink:#6B4E05;
+    --indigo:#3B4C79; --indigo-pale:#E4E8F2;
+    --green:#2E7D4F; --green-pale:#DCEEE2;
+    --blue:#1F5FBF; --blue-dark:#174A99; --blue-tint:rgba(31,95,191,.16);
+    --navy:#123A5E; --navy-dark:#0C2B47; --navy-light:#1B4E7A;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --shadow-sm: 0 1px 2px rgba(15,27,45,.06);
+    --shadow-md: 0 4px 14px rgba(15,27,45,.08);
+    --shadow-lg: 0 20px 50px rgba(15,27,45,.18);
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  :focus-visible{ outline:2px solid var(--blue); outline-offset:2px; border-radius:4px; }
+
+  /* ---------- header ---------- */
+  header{
+    background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 55%, var(--navy-light) 100%);
+    color:#fff; padding:16px 24px; display:flex; flex-wrap:wrap; gap:18px;
+    align-items:center; justify-content:space-between;
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:30;
+    box-shadow: var(--shadow-md);
+  }
+  header h1{ font-size:16px; margin:0; font-weight:700; letter-spacing:.2px; }
+  header .sub{ font-size:11.5px; color:#B9CCDD; margin-top:3px; letter-spacing:.15px; }
+  .headctl{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+  /* ---------- form controls ---------- */
+  select, input[type=number], input[type=date], input[type=text], input[type=password]{
+    font-family:var(--sans); font-size:13px; padding:8px 11px; border-radius:8px;
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  select:hover, input:hover{ border-color:#B7C3CE; }
+
+  button{ font-family:var(--sans); font-size:13px; font-weight:600; padding:9px 16px;
+    border-radius:8px; border:none; cursor:pointer; background:var(--teal); color:#fff;
+    transition:background .15s, box-shadow .15s, transform .08s;
+    display:inline-flex; align-items:center; gap:7px; }
+  button:hover{ box-shadow:var(--shadow-sm); }
+  button:active{ transform:translateY(1px); }
+  button.ghost{ background:transparent; border:1px solid var(--line); color:var(--ink); font-weight:500; }
+  button.ghost:hover{ background:#F0F3F6; }
+  button.generate{ background:linear-gradient(135deg, #D8852E, var(--amber)); color:#fff; box-shadow:0 2px 8px rgba(201,122,37,.35); }
+  button.generate:hover{ background:linear-gradient(135deg, #C97A25, #A8621A); }
+  button.small{ padding:5px 11px; font-size:12px; }
+  button.ok-btn{ background:var(--green); }
+  button.reject-btn{ background:var(--red); }
+  button[disabled], input[disabled]{ opacity:.4; cursor:not-allowed; }
+
+  /* ---------- top nav ---------- */
+  nav.topnav{
+    background:#fff; border-bottom:1px solid var(--line); padding:10px 24px;
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    position:sticky; top:60px; z-index:25; box-shadow:var(--shadow-sm);
+  }
+  nav.topnav .navbtn{
+    background:#F4F6F9; color:var(--ink); border:1px solid transparent; font-weight:600;
+    padding:9px 14px; border-radius:8px; font-size:12.5px;
+    display:inline-flex; align-items:center; gap:8px;
+    transition:background .15s, border-color .15s, color .15s, transform .08s;
+  }
+  nav.topnav .navbtn svg{ width:15px; height:15px; stroke-width:2; flex:none; }
+  nav.topnav .navbtn:hover{ background:var(--teal-pale); color:var(--teal-dark); }
+  nav.topnav .navbtn:active{ transform:scale(.98); }
+  nav.topnav .navbtn.active{ background:var(--navy); color:#fff; border-color:var(--navy); box-shadow:0 2px 8px rgba(18,58,94,.25); }
+  nav.topnav .navbtn{ position:relative; }
+  .navbadge{
+    position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; padding:0 5px; border-radius:99px;
+    background:var(--red); color:#fff; font-size:10px; font-weight:700; line-height:18px; text-align:center;
+    box-shadow:0 0 0 2px #fff;
+  }
+  nav.topnav .navbtn.active .navbadge{ box-shadow:0 0 0 2px var(--navy); }
+  nav.topnav .spacer{ flex:1; }
+
+  /* ---------- month tabs ---------- */
+  .monthbar{ background:#fff; border-bottom:2px solid var(--navy); padding:12px 24px 0; display:flex; align-items:flex-end; gap:16px; }
+  .monthbar .yr{ font-family:var(--mono); font-size:12px; font-weight:700; color:var(--ink-soft); padding-bottom:10px; letter-spacing:.5px; }
+  .monthtabs{ display:flex; align-items:flex-end; gap:4px; overflow-x:auto; scrollbar-width:thin; flex:1; }
+  .mtab{
+    background:transparent; color:var(--ink-soft); border:1px solid transparent; border-bottom:none;
+    border-radius:8px 8px 0 0; padding:8px 14px; font-size:12px; font-weight:600; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:6px; transition:background .15s, color .15s;
+  }
+  .mtab:hover{ background:var(--teal-pale); color:var(--teal-dark); }
+  .mtab .dot{ width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block; }
+  .mtab.active{
+    background:var(--navy); color:#fff; border-color:var(--navy); font-size:15px; font-weight:700;
+    padding:12px 22px; box-shadow:0 -4px 14px rgba(18,58,94,.28);
+  }
+  .mtab.active .dot{ background:#A5EBBF; }
+
+  /* ---------- modal ---------- */
+  .modal-backdrop{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    padding:16px; background:rgba(10,25,42,.5); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  .modal-backdrop.open{ opacity:1; pointer-events:auto; }
+  .modal{
+    width:min(580px,100%); max-height:calc(100% - 8px); display:flex; flex-direction:column;
+    background:#fff; border-radius:var(--radius-lg); overflow:hidden;
+    box-shadow:var(--shadow-lg);
+    transform:translateY(18px) scale(.97); transition:transform .22s cubic-bezier(.2,.9,.3,1.1);
+  }
+  .modal-backdrop.open .modal{ transform:none; }
+  .modal-head{
+    display:flex; align-items:center; gap:14px; padding:18px 20px; color:#fff;
+    background:linear-gradient(135deg, var(--navy-dark), var(--navy));
+  }
+  .mh-icon{ width:42px; height:42px; border-radius:11px; background:rgba(255,255,255,.14);
+    display:flex; align-items:center; justify-content:center; flex:none; }
+  .mh-icon svg{ width:20px; height:20px; stroke-width:2; }
+  .mh-text{ flex:1; min-width:0; }
+  .mh-title{ font-size:15.5px; font-weight:700; letter-spacing:.1px; }
+  .mh-sub{ font-size:12px; color:#B9CCDD; margin-top:3px; }
+  .mclose{ width:34px; height:34px; padding:0; border-radius:50%; background:rgba(255,255,255,.12); color:#fff; font-size:20px; line-height:1; flex:none; justify-content:center; }
+  .mclose:hover{ background:rgba(255,255,255,.26); }
+  .modal-body{ padding:20px; overflow-y:auto; background:#F7F9FB; }
+  .modal-body .card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow-sm); }
+  .modal-body .formrow{ display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-bottom:14px; }
+  .modal-body .formrow label{ font-size:12px; font-weight:600; color:var(--ink-soft); letter-spacing:.2px; min-width:0; }
+  .modal-body .formrow select, .modal-body .formrow input{ width:100%; min-width:0; padding:10px 12px; border-radius:9px; font-size:14px; }
+  .modal-body .me{ padding:11px 13px; border-radius:9px; background:var(--teal-pale); font-size:14px; color:var(--teal-dark); }
+  .modal-body .quotainfo{ font-size:12.5px; padding:11px 13px; border-radius:9px; background:var(--indigo-pale); color:var(--indigo); margin-bottom:14px; line-height:1.55; }
+  .modal-body button.submit{ width:100%; padding:12px; border-radius:9px; font-size:14px; background:var(--navy); justify-content:center; }
+  .modal-body button.submit:hover{ background:var(--navy-dark); }
+  .modal-body .sect{ margin:20px 0 9px; font-size:12px; font-weight:700; color:var(--navy); letter-spacing:.3px; text-transform:uppercase; }
+  .note{ font-size:11.5px; color:var(--ink-soft); margin-top:10px; line-height:1.6; }
+
+  .reqlist{ display:flex; flex-direction:column; gap:7px; }
+  .reqrow{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12.5px;
+    padding:10px 13px; border-radius:9px; background:#fff; border:1px solid var(--line); border-left-width:4px;
+    box-shadow:var(--shadow-sm); }
+  .reqrow.pending{ background:var(--amber-pale); border-color:#E5BC80; }
+  .reqrow.approved{ background:var(--green-pale); border-color:#B9DEC6; }
+  .reqrow.rejected{ background:var(--red-pale); border-color:#E0AFA8; opacity:.75; }
+  .badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:99px; letter-spacing:.03em; white-space:nowrap; text-transform:uppercase; }
+  .badge.pending{ background:var(--amber); color:#fff; }
+  .badge.approved{ background:var(--green); color:#fff; }
+  .badge.rejected{ background:var(--red); color:#fff; }
+  .reqrow .actions{ display:flex; gap:6px; }
+  .reqrow button.x{ background:none; color:var(--red); font-weight:700; padding:2px 7px; font-size:16px; }
+  .reqrow button.x:hover{ background:rgba(178,58,46,.1); border-radius:6px; }
+
+  .warn{ font-size:12px; padding:11px 13px; border-radius:9px; background:var(--amber-pale);
+    color:#6B4308; border:1px solid #E5BC80; display:none; margin-bottom:14px; line-height:1.55; }
+  .warn.show{ display:block; }
+  .warn label{ display:flex; gap:6px; align-items:flex-start; margin-top:8px; font-weight:600; color:#6B4308; }
+
+  .tablewrap{ overflow-x:auto; }
+  table.setup{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.setup th, table.setup td{ padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; }
+  table.setup th{ color:var(--ink-soft); font-weight:600; font-size:11.5px; letter-spacing:.2px; text-transform:uppercase; }
+  table.setup input{ padding:6px 9px; font-size:13px; width:86px; border-radius:7px; }
+
+  .access-denied{ padding:36px 16px; text-align:center; color:var(--ink-soft); font-size:13.5px; line-height:1.65; }
+  .access-denied .big{ font-size:36px; display:block; margin-bottom:10px; }
+  .access-denied b{ color:var(--ink); }
+
+  /* ---------- schedule ---------- */
+  .main{ padding:20px 24px; display:flex; flex-direction:column; gap:22px; }
+  .sched-block{ display:flex; flex-direction:column; gap:12px; }
+  .sched-title{ text-align:center; color:var(--navy); font-weight:800; }
+  .sched-title .t1{ line-height:1.3; font-size:18px; letter-spacing:.3px; }
+  .sched-title .t2{ line-height:1.3; font-size:15px; color:var(--teal-dark); }
+  .sched-title .t3{ line-height:1.3; margin-top:3px; font-size:15px; }
+
+  /* ==== TABEL JADWAL — TIDAK DISENTUH ==== */
+  .calwrap{ background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:auto; max-height:62vh; }
+  table.cal{ border-collapse:collapse; white-space:nowrap; font-size:12px; }
+  table.cal th, table.cal td{ border:1px solid var(--line); padding:5px 7px; text-align:center; }
+  table.cal thead th{ background:var(--teal-dark); color:#fff; position:sticky; top:0; z-index:5; font-family:var(--mono); font-weight:600; }
+  table.cal tbody th{ text-align:left; background:var(--panel); position:sticky; left:0; z-index:3; font-weight:600; border-right:2px solid var(--line); }
+  table.cal tbody th.no{ left:0; width:22px; text-align:center; color:var(--ink-soft); font-weight:400; z-index:4; }
+  table.cal tbody th.nama{ left:22px; min-width:140px; z-index:4; }
+  td.slot-PS{ background-color:#DDEFEE; color:#0A4552; font-weight:700; font-family:var(--mono); }
+  td.slot-M{ background-color:#E6E1F5; color:#3B2E75; font-weight:700; font-family:var(--mono); }
+  td.slot-off{ color:var(--ink-soft); font-family:var(--mono); }
+  td.slot-cuti{ background-color:var(--red); color:#fff; font-weight:700; font-family:var(--mono); }
+  td.slot-kuning{ background-color:var(--kuning); color:var(--kuning-ink); font-weight:700; font-family:var(--mono); }
+  td.slot-swap{ background-color:#D7ECEA; color:#0F6B5C; font-weight:700; font-family:var(--mono); }
+  td.locked{ outline:2px solid var(--indigo); outline-offset:-2px; }
+  td.swapped{ outline:2px dashed var(--green); outline-offset:-2px; }
+  td.total{ font-family:var(--mono); font-weight:700; background:#F5F7F8; }
+  table.cal td.avail{ background-image:linear-gradient(rgba(46,125,79,.22), rgba(46,125,79,.22)); outline:2px solid var(--green); outline-offset:-2px; }
+  table.cal thead th.sel{ background:var(--blue); color:#fff; border-top:2px solid var(--blue); }
+  table.cal thead th.sel.today{ background:var(--blue-dark); box-shadow:inset 0 -3px 0 #fff; }
+  table.cal td.sel{ background-image:linear-gradient(var(--blue-tint), var(--blue-tint)); }
+  table.cal .sel-l{ border-left:2px solid var(--blue); }
+  table.cal .sel-r{ border-right:2px solid var(--blue); }
+  table.cal td.sel-b{ border-bottom:2px solid var(--blue); }
+  /* ==== END TABEL JADWAL ==== */
+
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-soft); }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+  .log{ background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:12px 15px;
+    font-family:var(--mono); font-size:11.5px; max-height:180px; overflow-y:auto; color:var(--ink-soft); line-height:1.65;
+    box-shadow:var(--shadow-sm); }
+  .log .ok{ color:#0A4552; } .log .bad{ color:var(--red); font-weight:600; } .log .info{ color:var(--indigo); }
+  .empty-note{ font-size:13px; color:var(--ink-soft); padding:40px 22px; text-align:center; background:var(--panel); border:1px dashed var(--line); border-radius:12px; line-height:1.7; box-shadow:var(--shadow-sm); }
+  .empty-note b{ color:var(--ink); }
+
+  .toast{ position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px);
+    background:var(--navy-dark); color:#fff; padding:11px 18px; border-radius:99px; font-size:13px; z-index:120;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; max-width:92vw; text-align:center;
+    box-shadow:var(--shadow-lg); }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+
+  /* ---------- login screen ---------- */
+  .login-screen{
+    position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
+    padding:20px;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(31,95,191,.25), transparent 45%),
+      radial-gradient(circle at 80% 80%, rgba(14,92,110,.3), transparent 45%),
+      linear-gradient(135deg, #0C2B47, #123A5E 60%, #0A4552);
+    transition:opacity .25s, visibility .25s;
+  }
+  .login-screen.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .login-card{
+    width:min(420px,100%); background:#fff; border-radius:18px; overflow:hidden;
+    box-shadow:0 30px 70px rgba(4,15,30,.5), 0 2px 8px rgba(4,15,30,.2);
+    animation:loginIn .35s cubic-bezier(.2,.9,.3,1.1);
+  }
+  @keyframes loginIn{ from{ transform:translateY(20px) scale(.97); opacity:0; } to{ transform:none; opacity:1; } }
+  .login-brand{
+    display:flex; align-items:center; gap:14px; padding:22px 22px 18px;
+    background:linear-gradient(135deg, var(--navy-dark), var(--navy));
+    color:#fff;
+  }
+  .login-logo{
+    width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,.14);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .login-logo svg{ width:24px; height:24px; }
+  .login-title{ font-size:15px; font-weight:700; letter-spacing:.2px; }
+  .login-sub{ font-size:11.5px; color:#B9CCDD; margin-top:2px; }
+  .login-body{ padding:22px; }
+  .login-label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:7px; letter-spacing:.2px; }
+  .login-roles{
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;
+    max-height:200px; overflow-y:auto; padding:2px;
+  }
+  .login-role{
+    display:flex; align-items:center; gap:9px; padding:9px 11px;
+    border:1px solid var(--line); border-radius:9px; background:#fff; cursor:pointer;
+    font-size:12.5px; font-weight:600; color:var(--ink); text-align:left;
+    transition:border-color .15s, background .15s, box-shadow .15s;
+  }
+  .login-role:hover{ border-color:var(--navy); background:#F4F8FC; }
+  .login-role.selected{ border-color:var(--navy); background:var(--teal-pale); box-shadow:0 0 0 3px rgba(18,58,94,.12); }
+  .login-role .av{
+    width:26px; height:26px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:10.5px; font-weight:700; color:#fff; letter-spacing:.3px;
+  }
+  .login-role.admin .av{ background:linear-gradient(135deg, #6B4E05, #C97A25); }
+  .login-role.person .av{ background:linear-gradient(135deg, var(--navy-dark), var(--navy-light)); }
+  .login-role .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .login-pin{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
+    font-size:16px; letter-spacing:.4em; text-align:center; font-family:var(--mono);
+    background:#F7F9FB; transition:border-color .15s, box-shadow .15s;
+  }
+  .login-pin:focus{ border-color:var(--navy); outline:2px solid rgba(18,58,94,.15); outline-offset:0; background:#fff; }
+  .login-hint{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; min-height:16px; line-height:1.5; }
+  .login-hint.err{ color:var(--red); font-weight:600; }
+  .login-btn{
+    width:100%; margin-top:16px; padding:13px; border-radius:10px; font-size:14px;
+    background:var(--navy); justify-content:center;
+  }
+  .login-btn:hover{ background:var(--navy-dark); }
+  .login-foot{
+    text-align:center; padding:12px; font-size:11px; color:var(--ink-soft);
+    background:#F7F9FB; border-top:1px solid var(--line); letter-spacing:.2px;
+  }
+
+  /* ---------- user chip ---------- */
+  .userchip{ position:relative; }
+  .userchip-btn{
+    display:flex; align-items:center; gap:9px; padding:5px 10px 5px 5px;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.22);
+    border-radius:99px; cursor:pointer; color:#fff;
+    transition:background .15s, border-color .15s;
+  }
+  .userchip-btn:hover{ background:rgba(255,255,255,.2); border-color:rgba(255,255,255,.35); }
+  .userchip .avatar{
+    width:30px; height:30px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; color:#fff; letter-spacing:.3px;
+    background:linear-gradient(135deg, #1B4E7A, #2C7CA8);
+  }
+  .userchip.is-admin .avatar{ background:linear-gradient(135deg, #6B4E05, #C97A25); }
+  .userchip-text{ display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; }
+  .userchip-name{ font-size:12.5px; font-weight:700; color:#fff; }
+  .userchip-role{ font-size:10px; font-weight:600; color:#B9CCDD; letter-spacing:.3px; text-transform:uppercase; }
+  .userchip.is-admin .userchip-role{ color:#F2C58A; }
+  .userchip-menu{
+    position:absolute; top:calc(100% + 8px); right:0; min-width:180px;
+    background:#fff; border:1px solid var(--line); border-radius:10px;
+    box-shadow:var(--shadow-md); padding:6px; z-index:40;
+    opacity:0; pointer-events:none; transform:translateY(-4px);
+    transition:opacity .15s, transform .15s;
+  }
+  .userchip-menu.open{ opacity:1; pointer-events:auto; transform:none; }
+  .userchip-menu button{
+    width:100%; padding:9px 11px; border-radius:7px; font-size:12.5px; font-weight:500;
+    background:transparent; color:var(--ink); justify-content:flex-start; text-align:left;
+  }
+  .userchip-menu button:hover{ background:#F4F6F9; box-shadow:none; }
+  .userchip-menu button.danger{ color:var(--red); }
+  .userchip-menu button.danger:hover{ background:var(--red-pale); }
+
+  /* ================= ADMIN PAGE ================= */
+  .admin-shell{
+    padding:24px; max-width:1360px; margin:0 auto;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .admin-hero{
+    display:flex; align-items:center; gap:18px; padding:22px 24px;
+    background:linear-gradient(135deg, #0C2B47, #123A5E 70%, #1B4E7A);
+    color:#fff; border-radius:16px; box-shadow:var(--shadow-md);
+    flex-wrap:wrap;
+  }
+  .admin-hero-icon{
+    width:52px; height:52px; border-radius:14px; background:rgba(255,255,255,.14);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .admin-hero-icon svg{ width:26px; height:26px; }
+  .admin-hero-text{ flex:1; min-width:220px; }
+  .admin-hero h2{ margin:0; font-size:18px; font-weight:800; letter-spacing:.2px; }
+  .admin-hero p{ margin:4px 0 0; font-size:12.5px; color:#B9CCDD; }
+  .admin-hero .hero-actions{ display:flex; gap:9px; flex-wrap:wrap; }
+  .admin-hero .hero-actions button{ background:rgba(255,255,255,.14); }
+  .admin-hero .hero-actions button:hover{ background:rgba(255,255,255,.24); }
+  .admin-hero .hero-actions button.primary{ background:linear-gradient(135deg, #D8852E, var(--amber)); color:#fff; }
+  .admin-hero .hero-actions button.primary:hover{ background:linear-gradient(135deg, #C97A25, #A8621A); }
+
+  .admin-notif{
+    display:flex; align-items:center; gap:14px;
+    padding:14px 18px; border-radius:12px;
+    background:linear-gradient(135deg, #FBEBD3, #F8DDB6);
+    border:1px solid #E5BC80; color:#6B4308;
+    box-shadow:var(--shadow-sm);
+    flex-wrap:wrap;
+  }
+  .admin-notif .ni-icon{
+    width:40px; height:40px; border-radius:11px; flex:none;
+    background:rgba(201,122,37,.18); color:#7A4E0D;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .admin-notif .ni-icon svg{ width:20px; height:20px; }
+  .admin-notif .ni-text{ flex:1; min-width:180px; }
+  .admin-notif .ni-text b{ font-size:14px; color:#4F3205; display:block; }
+  .admin-notif .ni-text span{ font-size:12px; color:#6B4308; }
+  .admin-notif .ni-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+  .admin-notif .ni-actions button{ background:#7A4E0D; }
+  .admin-notif .ni-actions button.ghost{ background:transparent; color:#6B4308; border:1px solid #E5BC80; }
+  .admin-notif .ni-actions button:hover{ background:#6B4308; }
+  .admin-notif .ni-actions button.ghost:hover{ background:rgba(201,122,37,.12); }
+
+  .admin-tabs{
+    display:flex; gap:6px; flex-wrap:wrap; background:#fff; padding:8px;
+    border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow-sm);
+  }
+  .admin-tab{
+    background:transparent; color:var(--ink-soft); border:1px solid transparent; font-weight:600;
+    padding:9px 14px; border-radius:8px; font-size:12.5px;
+    display:inline-flex; align-items:center; gap:8px;
+    transition:background .15s, color .15s, border-color .15s;
+    position:relative;
+  }
+  .admin-tab svg{ width:15px; height:15px; stroke-width:2; }
+  .admin-tab:hover{ background:#F4F6F9; color:var(--ink); }
+  .admin-tab.active{ background:var(--navy); color:#fff; border-color:var(--navy); box-shadow:0 2px 8px rgba(18,58,94,.25); }
+  .admin-tab .count{
+    background:var(--red); color:#fff; font-size:10.5px; font-weight:700;
+    padding:1px 7px; border-radius:99px; min-width:18px; text-align:center;
+  }
+  .admin-tab.active .count{ background:rgba(255,255,255,.28); }
+  .admin-tab .count.zero{ display:none; }
+
+  .admin-panel{
+    background:#fff; border:1px solid var(--line); border-radius:14px;
+    padding:0; box-shadow:var(--shadow-sm); overflow:hidden;
+  }
+  .admin-panel-head{
+    display:flex; align-items:center; gap:14px; padding:18px 22px;
+    border-bottom:1px solid var(--line); background:#FBFCFD;
+  }
+  .admin-panel-head .ph-icon{
+    width:40px; height:40px; border-radius:11px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--teal-pale); color:var(--teal-dark);
+  }
+  .admin-panel-head .ph-icon svg{ width:20px; height:20px; }
+  .admin-panel-head .ph-text{ flex:1; min-width:0; }
+  .admin-panel-head h3{ margin:0; font-size:14.5px; font-weight:700; color:var(--ink); }
+  .admin-panel-head p{ margin:2px 0 0; font-size:12px; color:var(--ink-soft); }
+  .admin-panel-body{ padding:22px; }
+
+  .admin-grid{
+    display:grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+    gap:22px; align-items:start;
+  }
+  .admin-grid.equal{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width:1000px){
+    .admin-grid, .admin-grid.equal{ grid-template-columns:1fr; }
+  }
+  .admin-col{ display:flex; flex-direction:column; gap:16px; min-width:0; }
+  .admin-card{
+    background:#fff; border:1px solid var(--line); border-radius:12px;
+    padding:18px; box-shadow:var(--shadow-sm);
+  }
+  .admin-card.soft{ background:#FBFCFD; }
+  .admin-card-title{
+    display:flex; align-items:center; gap:9px;
+    font-size:12px; font-weight:700; color:var(--navy);
+    letter-spacing:.35px; text-transform:uppercase;
+    margin:0 0 14px;
+  }
+  .admin-card-title .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%;
+    background:var(--navy); color:#fff; font-size:10.5px; font-weight:700;
+    letter-spacing:0;
+  }
+  .admin-card-title .sub{
+    font-weight:500; color:var(--ink-soft); font-size:11px; letter-spacing:0; text-transform:none;
+    margin-left:auto;
+  }
+
+  .admin-card .formrow{ margin-bottom:13px; }
+  .admin-card .formrow:last-child{ margin-bottom:0; }
+  .admin-card .formrow label{ font-size:11.5px; color:var(--ink-soft); }
+  .admin-card .formrow select,
+  .admin-card .formrow input{ padding:9px 11px; font-size:13.5px; border-radius:9px; }
+  .admin-card .formrow input:focus,
+  .admin-card .formrow select:focus{
+    border-color:var(--navy); outline:2px solid rgba(18,58,94,.12); outline-offset:0;
+  }
+  .admin-card .quotainfo{ font-size:12.5px; padding:11px 13px; border-radius:9px; background:var(--indigo-pale); color:var(--indigo); margin-bottom:14px; line-height:1.55; }
+  .admin-card .me{ padding:11px 13px; border-radius:9px; background:var(--teal-pale); font-size:14px; color:var(--teal-dark); }
+  .admin-card button.submit{ width:100%; padding:12px; border-radius:9px; font-size:14px; background:var(--navy); justify-content:center; }
+  .admin-card button.submit:hover{ background:var(--navy-dark); }
+
+  .admin-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .admin-actions button{ padding:10px 16px; }
+  .admin-actions button.primary{ background:var(--navy); }
+  .admin-actions button.primary:hover{ background:var(--navy-dark); }
+
+  .admin-card .reqlist{ gap:8px; }
+  .admin-card .reqrow{ padding:12px 14px; font-size:13px; align-items:flex-start; }
+  .admin-card .reqrow .meta{ display:block; font-size:11px; color:var(--ink-soft); margin-top:4px; font-weight:400; }
+  .admin-card .reqrow .who{ font-weight:700; color:var(--ink); }
+
+  .admin-stats{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
+    gap:10px; margin-bottom:18px;
+  }
+  .admin-stat{
+    background:#FBFCFD; border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px;
+  }
+  .admin-stat .lbl{ font-size:10.5px; color:var(--ink-soft); letter-spacing:.3px; text-transform:uppercase; font-weight:600; }
+  .admin-stat .val{ font-size:20px; font-weight:800; color:var(--navy); font-family:var(--mono); margin-top:3px; }
+  .admin-stat.warn .val{ color:var(--amber); }
+  .admin-stat.ok .val{ color:var(--green); }
+  .admin-stat.bad .val{ color:var(--red); }
+
+  .admin-card table.setup{ font-size:13px; }
+  .admin-card table.setup th,
+  .admin-card table.setup td{ padding:10px 12px; }
+  .admin-card table.setup th{ font-size:11px; letter-spacing:.35px; }
+  .admin-card table.setup tbody tr:hover{ background:#FBFCFD; }
+  .admin-card table.setup input{ width:80px; padding:7px 9px; border-radius:7px; text-align:center; }
+
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:520px){ .field-row{ grid-template-columns:1fr; } }
+
+  .admin-empty{
+    padding:32px 18px; text-align:center; color:var(--ink-soft);
+    font-size:12.5px; line-height:1.65; background:#FBFCFD;
+    border:1px dashed var(--line); border-radius:10px;
+  }
+  .admin-empty b{ color:var(--ink); }
+
+  .admin-info{
+    display:flex; align-items:flex-start; gap:10px;
+    padding:11px 13px; border-radius:9px;
+    background:var(--indigo-pale); color:var(--indigo);
+    font-size:12px; line-height:1.55; margin-bottom:14px;
+  }
+  .admin-info svg{ width:16px; height:16px; flex:none; margin-top:1px; }
+
+  /* ---------- print ---------- */
+  .print-list{ display:flex; flex-direction:column; gap:8px; }
+  .print-item{
+    display:flex; align-items:center; gap:12px;
+    padding:13px 15px; background:#fff; border:1px solid var(--line);
+    border-left:4px solid var(--green); border-radius:10px;
+    cursor:pointer; transition:box-shadow .15s, transform .08s, border-color .15s;
+    text-align:left; width:100%; font-family:inherit;
+  }
+  .print-item:hover{ box-shadow:var(--shadow-md); border-color:#B7C3CE; }
+  .print-item:active{ transform:scale(.995); }
+  .print-item .pi-icon{
+    width:36px; height:36px; border-radius:10px; flex:none;
+    background:var(--teal-pale); color:var(--teal-dark);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .print-item .pi-icon svg{ width:18px; height:18px; }
+  .print-item .pi-text{ flex:1; min-width:0; }
+  .print-item .pi-title{ font-size:13.5px; font-weight:700; color:var(--ink); }
+  .print-item .pi-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+  .print-item .pi-badge{
+    font-size:10.5px; font-weight:700; letter-spacing:.03em;
+    background:var(--green-pale); color:var(--green);
+    padding:4px 10px; border-radius:99px;
+  }
+
+  @media print{
+    header, nav.topnav, .monthbar, .legend, .log,
+    .admin-shell, .login-screen, .toast, .userchip{ display:none !important; }
+    #adminPage{ display:none !important; }
+    body{ background:#fff; }
+    #appRoot{ display:block !important; }
+    .main{ padding:0; }
+    .calwrap{ max-height:none; overflow:visible; border:none; }
+    table.cal{ font-size:10px; }
+    table.cal thead th{ background:#0A4552 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    td.slot-PS, td.slot-M, td.slot-cuti, td.slot-kuning, td.slot-swap{
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .sched-title{ page-break-after:avoid; }
+    @page{ size: landscape; margin: 10mm; }
+  }
+
+  @media (max-width:880px){
+    .main{ padding-left:14px; padding-right:14px; }
+    nav.topnav{ padding:9px 14px; }
+    .monthbar{ padding:12px 14px 0; }
+    header{ padding:14px 16px; }
+    .modal-backdrop{ align-items:flex-end; padding:0; }
+    .modal{ border-radius:18px 18px 0 0; max-height:92%; }
+    .admin-shell{ padding:14px; }
+  }
+  @media (max-width:520px){
+    .login-roles{ grid-template-columns:1fr; }
+    .userchip-text{ display:none; }
+    .userchip-btn{ padding:4px; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .modal, .modal-backdrop, .toast, .login-card{ transition:none; animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<div class="login-screen" id="loginScreen" aria-hidden="true">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z"/></svg>
+      </div>
+      <div>
+        <div class="login-title">Simulator Jadwal Shift</div>
+        <div class="login-sub">Pengelola Database BMKG</div>
+      </div>
+    </div>
+    <div class="login-body">
+      <label class="login-label">Masuk sebagai</label>
+      <div class="login-roles" id="loginRoles"></div>
+      <label class="login-label" style="margin-top:14px">PIN</label>
+      <input type="password" id="loginPin" class="login-pin" placeholder="••••" inputmode="numeric" maxlength="8" autocomplete="off">
+      <div class="login-hint" id="loginHint"></div>
+      <button class="login-btn" id="loginBtn">
+        Masuk
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="login-foot">Sesi berakhir otomatis saat tab ditutup.</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="appRoot" style="display:none">
+<header>
+  <div>
+    <h1>Simulator Jadwal Shift — Pengelola Database BMKG</h1>
+    <div class="sub">2 orang PS + 2 orang M / hari · pola sama untuk semua: PS → M → Libur-1 → Libur-2 → antre lagi</div>
+  </div>
+  <div class="headctl">
+    <select id="selYear" aria-label="Tahun"></select>
+    <button class="generate" id="btnGenerate">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      <span id="btnGenerateLabel">Generate jadwal</span>
+    </button>
+    <div class="userchip" id="userChip" hidden>
+      <button class="userchip-btn" id="userChipBtn" aria-haspopup="true" aria-expanded="false">
+        <span class="avatar" id="userAvatar">–</span>
+        <span class="userchip-text">
+          <span class="userchip-name" id="userName">–</span>
+          <span class="userchip-role" id="userRole">–</span>
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="userchip-menu" id="userChipMenu">
+        <button id="menuSwitch">Ganti akun</button>
+        <button id="menuLogout" class="danger">Logout</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="topnav" id="topnav">
+  <button class="navbtn" data-panel="setup">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Urutan antrian
+  </button>
+  <button class="navbtn" data-panel="cuti">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+    Ajukan cuti<span class="navbadge" id="badgeCuti" hidden></span>
+  </button>
+  <button class="navbtn" data-panel="kuning">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg>
+    Ajukan kuning<span class="navlock" id="lockKuning" hidden>🔒</span><span class="navbadge" id="badgeKuning" hidden></span>
+  </button>
+  <button class="navbtn" data-panel="swap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16H3"/><path d="m7 20-4-4 4-4"/><path d="M17 8h4"/><path d="m17 4 4 4-4 4"/><path d="M3 12h18"/></svg>
+    Tukar dinas<span class="navbadge" id="badgeSwap" hidden></span>
+  </button>
+  <button class="navbtn" data-panel="lock">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    Lock admin
+  </button>
+  <div class="spacer"></div>
+  <button class="navbtn" id="btnOpenAdmin" style="background:linear-gradient(135deg, #123A5E, #1B4E7A); color:#fff; border-color:transparent; position:relative;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z"/><path d="M14 3h7v7h-7z"/><path d="M14 14h7v7h-7z"/><path d="M3 14h7v7H3z"/></svg>
+    Panel Admin
+    <span class="navbadge" id="badgeAdmin" hidden></span>
+  </button>
+</nav>
+
+<div class="monthbar">
+  <div class="yr" id="yearLabel"></div>
+  <div class="monthtabs" id="monthTabs" role="tablist" aria-label="Pilih bulan"></div>
+</div>
+
+<div class="main" id="scheduleArea"></div>
+</div><!-- /appRoot -->
+
+<!-- ================= ADMIN PAGE ================= -->
+<div id="adminPage" style="display:none">
+  <header>
+    <div>
+      <h1>Panel Admin — Simulator Jadwal Shift</h1>
+      <div class="sub">Kelola antrian, cuti, kuning, lock, dan cetak jadwal</div>
+    </div>
+    <div class="headctl">
+      <button class="ghost" id="btnBackFromAdmin" style="background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.25); color:#fff;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        Kembali ke jadwal
+      </button>
+      <div class="userchip is-admin" id="adminUserChip">
+        <button class="userchip-btn" id="adminUserChipBtn">
+          <span class="avatar">AD</span>
+          <span class="userchip-text">
+            <span class="userchip-name">Administrator</span>
+            <span class="userchip-role">Admin</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="admin-shell">
+    <div class="admin-hero">
+      <div class="admin-hero-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z"/></svg>
+      </div>
+      <div class="admin-hero-text">
+        <h2 id="adminHello">Selamat datang, Administrator</h2>
+        <p>Kelola personel, persetujuan cuti/kuning, lock jadwal, dan cetak jadwal bulanan.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="primary" id="btnAdminPrint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Cetak jadwal
+        </button>
+        <button id="btnAdminGenerate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          Generate jadwal
+        </button>
+      </div>
+    </div>
+
+    <div id="adminNotifBanner"></div>
+
+    <div class="admin-tabs" id="adminTabs">
+      <button class="admin-tab active" data-atab="setup">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Urutan antrian
+      </button>
+      <button class="admin-tab" data-atab="kuningwindow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        Jadwal proses kuning
+      </button>
+      <button class="admin-tab" data-atab="cuti">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+        Persetujuan cuti <span class="count zero" id="cntCuti">0</span>
+      </button>
+      <button class="admin-tab" data-atab="kuning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg>
+        Persetujuan kuning <span class="count zero" id="cntKuning">0</span>
+      </button>
+      <button class="admin-tab" data-atab="swap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16H3"/><path d="m7 20-4-4 4-4"/><path d="M17 8h4"/><path d="m17 4 4 4-4 4"/><path d="M3 12h18"/></svg>
+        Persetujuan tukar dinas <span class="count zero" id="cntSwap">0</span>
+      </button>
+      <button class="admin-tab" data-atab="lock">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Lock admin
+      </button>
+      <button class="admin-tab" data-atab="print">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Cetak jadwal
+      </button>
+    </div>
+
+    <div id="adminPanelBody"></div>
+  </div>
+</div>
+
+<!-- ================= MODAL ================= -->
+<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+  <div class="modal" id="modalCard" role="dialog" aria-modal="true" aria-labelledby="mTitle" tabindex="-1">
+    <div class="modal-head">
+      <div class="mh-icon" id="mIcon"></div>
+      <div class="mh-text">
+        <div class="mh-title" id="mTitle"></div>
+        <div class="mh-sub" id="mSub"></div>
+      </div>
+      <button class="mclose" id="mClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   STATE & KONSTANTA
+   ===================================================================== */
+const CAP = 2;
+const DEFAULT_NAMES = [
+  "Hendra Setiaji","Asmadi Djasman","Akbar Yus Prasetio","Amzah","Aziz Setia Aji",
+  "Hanapi","M Hajar Zakariya","Grandhista Septya I. P","Reza Pitriyanto","Reza Bayu Perdana"
+];
+let personnel = DEFAULT_NAMES.map((name,i)=>({ id:i, name, rank:i+1, kuningQuota:10, cutiBalances:{} }));
+let cutiList = [];
+let kuningList = [];
+let lockedList = [];
+let swapList = [];
+let nextId = 1;
+const CUTI_DEFAULT_BALANCE = 12;
+const KUNING_DECAY_RATIO = 0.7;
+const KUNING_MIN_QUOTA = 1;
+let currentRole = 'guest';
+let activePanel = null;
+let adminTab = 'setup';
+let kuningWindow = { start: 20, end: 26, draftDay: 27, distributeDay: 29 };
+let printMeta = { lampiran: 'Lampiran Surat', nomor: '', tanggal: '' }; // untuk kop cetak formal
+let extraHolidays = {}; // key "Y-M" -> "1,17" (tanggal merah tambahan selain Sabtu/Minggu), string mentah dari input
+const monthNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+function realToday(){ const t=new Date(); return {y:t.getFullYear(), m:t.getMonth()+1, d:t.getDate()}; }
+const rtNow = realToday();
+let viewY = rtNow.y;
+let viewM = rtNow.m;
+let schedules = {};
+
+/* =====================================================================
+   SUPABASE SYNC
+   ===================================================================== */
+const SUPABASE_URL = 'https://qqosctgfqgdkzwbdzwgw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3NjdGdmcWdka3p3YmR6d2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMTg5MzEsImV4cCI6MjEwNTg5NDkzMX0.ZpO8s-wZ3AF72zdTZYqX-ZIP4ZwdPib7dwtQXV6xhDY';
+const sb = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+if(!sb) console.warn('[supabase] client tidak aktif — cek SUPABASE_URL/ANON_KEY atau koneksi ke CDN.');
+
+async function dbInsert(table, row){
+  if(!sb) return;
+  const { error } = await sb.from(table).insert(row);
+  if(error) console.error('[supabase insert]', table, error.message);
+}
+async function dbUpdate(table, id, patch){
+  if(!sb) return;
+  const { error } = await sb.from(table).update(patch).eq('id', id);
+  if(error) console.error('[supabase update]', table, error.message);
+}
+async function dbDelete(table, id){
+  if(!sb) return;
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if(error) console.error('[supabase delete]', table, error.message);
+}
+async function dbUpsert(table, row, onConflict){
+  if(!sb) return;
+  const { error } = await sb.from(table).upsert(row, onConflict ? { onConflict } : undefined);
+  if(error) console.error('[supabase upsert]', table, error.message);
+}
+
+async function persistSchedule(y, m, res){
+  await dbUpsert('schedules', {
+    year: y, month: m, days: res.days, calendar: res.calendar,
+    month_ps: res.monthPS, month_m: res.monthM, logs: res.logs,
+    end_queue: res.endQueue, end_cur: res.endCur
+  }, 'year,month');
+}
+async function persistPersonnelField(id, field, value){
+  const col = field==='kuningQuota' ? 'kuning_quota' : field;
+  await dbUpdate('personnel', id, { [col]: value });
+}
+async function persistCutiBalance(pid, year, balance){
+  await dbUpsert('cuti_balances', { personnel_id: pid, year, balance }, 'personnel_id,year');
+}
+async function persistSettings(){
+  await dbUpsert('app_settings', {
+    id: true,
+    kuning_window_start: kuningWindow.start,
+    kuning_window_end: kuningWindow.end,
+    kuning_window_draft_day: kuningWindow.draftDay,
+    kuning_window_distribute_day: kuningWindow.distributeDay,
+    print_lampiran: printMeta.lampiran,
+    print_nomor: printMeta.nomor || null,
+    print_tanggal: printMeta.tanggal || null
+  }, 'id');
+}
+async function persistExtraHoliday(y, m, daysStr){
+  await dbUpsert('extra_holidays', { year: y, month: m, days: daysStr }, 'year,month');
+}
+
+async function loadFromSupabase(){
+  if(!sb) return;
+  try{
+    const [pRes, cbRes, crRes, krRes, lsRes, srRes, schRes, setRes, ehRes] = await Promise.all([
+      sb.from('personnel').select('*').order('id'),
+      sb.from('cuti_balances').select('*'),
+      sb.from('cuti_requests').select('*'),
+      sb.from('kuning_requests').select('*'),
+      sb.from('locked_slots').select('*'),
+      sb.from('swap_requests').select('*'),
+      sb.from('schedules').select('*'),
+      sb.from('app_settings').select('*').eq('id', true).maybeSingle(),
+      sb.from('extra_holidays').select('*')
+    ]);
+    const pRows = pRes.data, cbRows = cbRes.data, crRows = crRes.data, krRows = krRes.data,
+          lsRows = lsRes.data, srRows = srRes.data, schRows = schRes.data, setRow = setRes.data, ehRows = ehRes.data;
+
+    if(pRows && pRows.length){
+      personnel = pRows.map(r=>({
+        id: r.id, name: r.name, rank: r.rank, kuningQuota: r.kuning_quota,
+        cutiBalances: (cbRows||[]).filter(b=>b.personnel_id===r.id)
+          .reduce((acc,b)=>{ acc[b.year]=b.balance; return acc; }, {})
+      }));
+    }
+    if(crRows) cutiList = crRows.map(r=>({ id:r.id, personnelId:r.personnel_id, start:r.start_day, end:r.end_day, reason:r.reason, status:r.status, month:r.month, year:r.year }));
+    if(krRows) kuningList = krRows.map(r=>({ id:r.id, personnelId:r.personnel_id, start:r.start_day, end:r.end_day, status:r.status, month:r.month, year:r.year }));
+    if(lsRows) lockedList = lsRows.map(r=>({ id:r.id, personnelId:r.personnel_id, date:r.date, slot:r.slot, reason:r.reason, month:r.month, year:r.year }));
+    if(srRows) swapList = srRows.map(r=>({ id:r.id, requesterId:r.requester_id, date:r.date, slot:r.slot, partnerId:r.partner_id, reason:r.reason, status:r.status, month:r.month, year:r.year }));
+    if(schRows) schRows.forEach(r=>{
+      schedules[skey(r.year, r.month)] = { calendar:r.calendar, monthPS:r.month_ps, monthM:r.month_m, logs:r.logs||[], days:r.days, endQueue:r.end_queue||[], endCur:r.end_cur||null };
+    });
+    if(setRow){
+      kuningWindow = { start:setRow.kuning_window_start ?? kuningWindow.start, end:setRow.kuning_window_end ?? kuningWindow.end, draftDay:setRow.kuning_window_draft_day ?? kuningWindow.draftDay, distributeDay:setRow.kuning_window_distribute_day ?? kuningWindow.distributeDay };
+      printMeta = { lampiran:setRow.print_lampiran || printMeta.lampiran, nomor:setRow.print_nomor || '', tanggal:setRow.print_tanggal || '' };
+    }
+    if(ehRows) ehRows.forEach(r=>{ extraHolidays[skey(r.year, r.month)] = r.days; });
+
+    const allIds = [...cutiList, ...kuningList, ...lockedList, ...swapList].map(x=>x.id);
+    if(allIds.length) nextId = Math.max(nextId, Math.max(...allIds) + 1);
+  }catch(e){
+    console.error('[supabase load]', e);
+  }
+}
+
+function skey(y,m){ return y+'-'+m; }
+function nextMonthYear(y,m){ return m===12 ? {y:y+1,m:1} : {y:y,m:m+1}; }
+function prevMonthYear(y,m){ return m===1 ? {y:y-1,m:12} : {y:y,m:m-1}; }
+function isKuningWindowOpen(){
+  const d = realToday().d;
+  const {start, end} = kuningWindow;
+  if(start<=end) return d>=start && d<=end;
+  return d>=start || d<=end;
+}
+function nextKuningOpenLabel(){
+  const rt = realToday();
+  if(rt.d < kuningWindow.start) return `tanggal ${kuningWindow.start} ${monthNames[rt.m-1]} ${rt.y}`;
+  const nm = nextMonthYear(rt.y, rt.m);
+  return `tanggal ${kuningWindow.start} ${monthNames[nm.m-1]} ${nm.y}`;
+}
+function isAdmin(){ return currentRole==='admin'; }
+function isUserRole(){ return typeof currentRole==='string' && currentRole.startsWith('p'); }
+function currentPersonnelId(){ return isUserRole() ? parseInt(currentRole.slice(1)) : null; }
+
+/* =====================================================================
+   AUTH
+   ===================================================================== */
+const AUTH_KEY = 'sim-shift-user';
+const PIN_ADMIN = '1234';
+const PIN_PERSONEL = {};
+function saveSession(role){ try{ sessionStorage.setItem(AUTH_KEY, role); }catch(e){} }
+function loadSession(){ try{ return sessionStorage.getItem(AUTH_KEY) || null; }catch(e){ return null; } }
+function clearSession(){ try{ sessionStorage.removeItem(AUTH_KEY); }catch(e){} }
+function roleLabel(role){
+  if(role==='admin') return 'Admin';
+  if(role && role.startsWith('p')) return 'Personel';
+  return 'Tamu';
+}
+function roleName(role){
+  if(role==='admin') return 'Administrator';
+  if(role && role.startsWith('p')) return personnel[parseInt(role.slice(1))].name;
+  return 'Tamu';
+}
+function initials(name){
+  const parts = String(name).trim().split(/\s+/);
+  if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+const selYear = document.getElementById('selYear');
+for(let y=rtNow.y-1; y<=rtNow.y+2; y++) selYear.innerHTML += `<option value="${y}" ${y===viewY?'selected':''}>${y}</option>`;
+
+function daysInMonthOf(y,m){ return new Date(y, m, 0).getDate(); }
+function daysInMonth(){ return daysInMonthOf(viewY, viewM); }
+function pad2(n){ return n<10?'0'+n:''+n; }
+function monthFirstStr(){ return `${viewY}-${pad2(viewM)}-01`; }
+function monthLastStr(){ return `${viewY}-${pad2(viewM)}-${pad2(daysInMonth())}`; }
+function todayStr(){ const t=new Date(); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; }
+
+function renderLoginRoles(){
+  const box = document.getElementById('loginRoles');
+  let html = `<button class="login-role admin" data-role="admin">
+      <span class="av">AD</span><span class="nm">Administrator</span></button>`;
+  html += personnel.map(p=>`<button class="login-role person" data-role="p${p.id}">
+      <span class="av">${initials(p.name)}</span><span class="nm">${p.name}</span></button>`).join('');
+  box.innerHTML = html;
+  box.querySelectorAll('.login-role').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      box.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+      b.classList.add('selected');
+      updateLoginHint();
+    });
+  });
+}
+function selectedLoginRole(){
+  const sel = document.querySelector('.login-role.selected');
+  return sel ? sel.dataset.role : null;
+}
+function updateLoginHint(){
+  const role = selectedLoginRole();
+  const hint = document.getElementById('loginHint');
+  const pinBox = document.getElementById('loginPin');
+  hint.classList.remove('err'); hint.textContent='';
+  if(!role){ pinBox.disabled = true; pinBox.placeholder='Pilih akun dulu'; return; }
+  pinBox.disabled = false;
+  if(role==='admin'){
+    pinBox.placeholder = '••••';
+    hint.textContent = 'Masukkan PIN admin untuk melanjutkan.';
+  } else {
+    pinBox.placeholder = PIN_PERSONEL[role] ? '••••' : '(tidak wajib)';
+    hint.textContent = PIN_PERSONEL[role] ? 'Masukkan PIN personel.' : 'PIN tidak diwajibkan untuk akun personel.';
+  }
+}
+function tryLogin(){
+  const role = selectedLoginRole();
+  const hint = document.getElementById('loginHint');
+  hint.classList.remove('err');
+  if(!role){ hint.textContent='Pilih akun dulu.'; hint.classList.add('err'); return; }
+  const pin = document.getElementById('loginPin').value.trim();
+  if(role==='admin' && pin!==PIN_ADMIN){
+    hint.textContent='PIN admin salah.'; hint.classList.add('err');
+    document.getElementById('loginPin').select(); return;
+  }
+  if(role!=='admin' && PIN_PERSONEL[role] && pin!==PIN_PERSONEL[role]){
+    hint.textContent='PIN personel salah.'; hint.classList.add('err');
+    document.getElementById('loginPin').select(); return;
+  }
+  saveSession(role);
+  enterApp(role);
+}
+function enterApp(role){
+  currentRole = role;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('loginScreen').setAttribute('aria-hidden','true');
+  document.getElementById('appRoot').style.display = 'block';
+  document.getElementById('btnOpenAdmin').style.display = isAdmin() ? 'inline-flex' : 'none';
+  updateUserChip();
+  renderAll();
+}
+function logout(){
+  clearSession();
+  currentRole = 'guest';
+  closeModal();
+  hideAdminPage();
+  document.getElementById('userChipMenu').classList.remove('open');
+  document.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+  document.getElementById('loginPin').value='';
+  updateLoginHint();
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginScreen').setAttribute('aria-hidden','false');
+  toast('Anda telah logout');
+}
+function updateUserChip(){
+  const chip = document.getElementById('userChip');
+  if(!currentRole || currentRole==='guest'){ chip.hidden = true; return; }
+  chip.hidden = false;
+  chip.classList.toggle('is-admin', isAdmin());
+  const name = roleName(currentRole);
+  document.getElementById('userName').textContent = name;
+  document.getElementById('userRole').textContent = roleLabel(currentRole);
+  document.getElementById('userAvatar').textContent = isAdmin() ? 'AD' : initials(name);
+}
+document.getElementById('userChipBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  const menu = document.getElementById('userChipMenu');
+  menu.classList.toggle('open');
+  document.getElementById('userChipBtn').setAttribute('aria-expanded', menu.classList.contains('open'));
+});
+document.addEventListener('click', ()=>{
+  document.getElementById('userChipMenu').classList.remove('open');
+  document.getElementById('userChipBtn').setAttribute('aria-expanded','false');
+});
+document.getElementById('menuSwitch').addEventListener('click', ()=>{
+  document.getElementById('userChipMenu').classList.remove('open');
+  document.getElementById('appRoot').style.display='none';
+  document.getElementById('adminPage').style.display='none';
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginScreen').setAttribute('aria-hidden','false');
+});
+document.getElementById('menuLogout').addEventListener('click', logout);
+document.getElementById('loginBtn').addEventListener('click', tryLogin);
+document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+
+/* =====================================================================
+   UTIL
+   ===================================================================== */
+function updateNavHighlight(){
+  document.querySelectorAll('.navbtn[data-panel]').forEach(btn=> btn.classList.toggle('active', btn.dataset.panel===activePanel));
+}
+function updateGenerateButton(){
+  const b = document.getElementById('btnGenerate');
+  b.style.display = isAdmin() ? 'inline-flex' : 'none';
+  document.getElementById('btnGenerateLabel').textContent = `Generate jadwal ${monthNames[viewM-1]}`;
+}
+function pendingCounts(){
+  return {
+    cuti: cutiList.filter(c=>c.status==='pending').length,
+    kuning: kuningList.filter(k=>k.status==='pending').length,
+    swap: swapList.filter(s=>s.status==='pending').length
+  };
+}
+function updateNavBadges(){
+  const bc = document.getElementById('badgeCuti');
+  const bk = document.getElementById('badgeKuning');
+  const bs = document.getElementById('badgeSwap');
+  const lk = document.getElementById('lockKuning');
+  let nCuti, nKuning, nSwap;
+  if(isAdmin()){
+    const p = pendingCounts();
+    nCuti = p.cuti; nKuning = p.kuning; nSwap = p.swap;
+  } else if(isUserRole()){
+    nCuti = cutiList.filter(c=>c.personnelId===currentPersonnelId() && c.status==='pending').length;
+    nKuning = kuningList.filter(k=>k.personnelId===currentPersonnelId() && k.status==='pending').length;
+    nSwap = swapList.filter(s=>s.requesterId===currentPersonnelId() && s.status==='pending').length;
+  } else { nCuti = 0; nKuning = 0; nSwap = 0; }
+  bc.hidden = nCuti===0; bc.textContent = nCuti;
+  bk.hidden = nKuning===0; bk.textContent = nKuning;
+  if(bs){ bs.hidden = nSwap===0; bs.textContent = nSwap; }
+  if(lk){ lk.hidden = isKuningWindowOpen(); lk.title = isKuningWindowOpen() ? '' : `Ditutup, dibuka lagi ${nextKuningOpenLabel()}`; }
+
+  const ba = document.getElementById('badgeAdmin');
+  if(ba){
+    const total = pendingCounts().cuti + pendingCounts().kuning + pendingCounts().swap;
+    ba.hidden = total===0; ba.textContent = total;
+  }
+}
+function personnelOptions(){ return personnel.map(p=>`<option value="${p.id}">${p.name}</option>`).join(''); }
+function kuningUsedInMonth(pid, month, year){
+  return kuningList.filter(k=>k.personnelId===pid && k.status!=='rejected' && k.month===month && k.year===year)
+    .reduce((sum,k)=> sum + (k.end-k.start+1), 0);
+}
+function effectiveKuningQuota(pid, year, month){
+  const base = personnel[pid].kuningQuota;
+  const pv = prevMonthYear(year, month);
+  const usedPrev = kuningUsedInMonth(pid, pv.m, pv.y);
+  if(usedPrev<=0) return base;
+  const quotaPrev = effectiveKuningQuota(pid, pv.y, pv.m);
+  if(usedPrev>=quotaPrev && quotaPrev>0) return Math.max(KUNING_MIN_QUOTA, Math.ceil(quotaPrev*KUNING_DECAY_RATIO));
+  return base;
+}
+function cutiBalanceForYear(pid, year){
+  const p = personnel[pid];
+  return (p.cutiBalances && p.cutiBalances[year]!=null) ? p.cutiBalances[year] : CUTI_DEFAULT_BALANCE;
+}
+function setCutiBalance(pid, year, val){
+  const p = personnel[pid];
+  if(!p.cutiBalances) p.cutiBalances = {};
+  const balance = Math.max(0, parseInt(val)||0);
+  p.cutiBalances[year] = balance;
+  persistCutiBalance(pid, year, balance);
+}
+function cutiUsedInYear(pid, year){
+  return cutiList.filter(c=>c.personnelId===pid && c.status!=='rejected' && c.year===year)
+    .reduce((sum,c)=> sum + (c.end-c.start+1), 0);
+}
+function fmtRange(c){ return c.start===c.end ? `tgl ${c.start}` : `tgl ${c.start}–${c.end}`; }
+function monthTag(month, year){ return `${monthNames[month-1].slice(0,3)} ${year}`; }
+function applyDateBounds(inputEl){
+  const min = monthFirstStr() > todayStr() ? monthFirstStr() : todayStr();
+  const max = monthLastStr();
+  if(min > max){ inputEl.disabled = true; inputEl.title = 'Bulan ini sudah lewat'; }
+  else { inputEl.disabled = false; inputEl.min = min; inputEl.max = max; inputEl.title=''; }
+}
+function dayFromDateInput(value){
+  if(!value) return null;
+  const [y,m,d] = value.split('-').map(Number);
+  if(y!==viewY || m!==viewM) return null;
+  return d;
+}
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* =====================================================================
+   ICON SET
+   ===================================================================== */
+const ICON = {
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  cuti:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
+  kuning:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/></svg>',
+  swap:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16H3"/><path d="m7 20-4-4 4-4"/><path d="M17 8h4"/><path d="m17 4 4 4-4 4"/><path d="M3 12h18"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  print:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>'
+};
+
+/* =====================================================================
+   MODAL (untuk personel)
+   ===================================================================== */
+const PANEL_META = {
+  setup:  { icon:ICON.users, title:'Urutan antrian & kuota kuning' },
+  cuti:   { icon:ICON.cuti,  title:'Ajukan cuti' },
+  kuning: { icon:ICON.kuning,title:'Ajukan kuning' },
+  swap:   { icon:ICON.swap,  title:'Tukar dinas' },
+  lock:   { icon:ICON.lock,  title:'Lock admin' }
+};
+const backdrop = document.getElementById('modalBackdrop');
+function openModal(kind){
+  activePanel = kind;
+  updateNavHighlight();
+  renderModal();
+  backdrop.classList.add('open');
+  backdrop.setAttribute('aria-hidden','false');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('modalCard').focus();
+}
+function closeModal(){
+  activePanel = null;
+  backdrop.classList.remove('open');
+  backdrop.setAttribute('aria-hidden','true');
+  document.body.style.overflow = '';
+  updateNavHighlight();
+}
+function renderModal(){
+  if(!activePanel) return;
+  const meta = PANEL_META[activePanel];
+  document.getElementById('mIcon').innerHTML = meta.icon;
+  document.getElementById('mTitle').textContent = meta.title;
+  document.getElementById('mSub').textContent = activePanel==='setup' ? 'Khusus admin' : `Bulan ${monthNames[viewM-1]} ${viewY}`;
+  const body = document.getElementById('modalBody');
+  if(activePanel==='setup') renderSetupPanel(body);
+  else if(activePanel==='lock') renderLockPanel(body);
+  else if(activePanel==='swap') renderSwapPanel(body);
+  else renderRequestPanel(body, activePanel, 'personel');
+}
+document.querySelectorAll('.navbtn[data-panel]').forEach(btn=> btn.addEventListener('click', ()=> openModal(btn.dataset.panel)));
+document.getElementById('mClose').addEventListener('click', closeModal);
+backdrop.addEventListener('click', e=>{ if(e.target===backdrop) closeModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && activePanel) closeModal(); });
+function accessDenied(area, icon, msg){ area.innerHTML = `<div class="access-denied"><span class="big">${icon}</span>${msg}</div>`; }
+
+/* =====================================================================
+   PANEL SETUP / LOCK (dipakai modal admin saja)
+   ===================================================================== */
+function renderSetupPanel(area){
+  if(!isAdmin()){ accessDenied(area, '🔐', `Menu ini <b>khusus admin</b>.<br>Silakan masuk sebagai Admin di kanan atas.`); return; }
+  area.innerHTML = `<div class="card">
+    <div class="tablewrap"><table class="setup" id="tblPersonel"></table></div>
+    <div class="note">Kapasitas per hari: 2 orang PS + 2 orang M. Semua personel menjalani pola sama: PS → M → Libur-1 → Libur-2 → kembali ke ujung antrian.</div>
+  </div>`;
+  const tbl = document.getElementById('tblPersonel');
+  tbl.innerHTML = `<tr><th>Nama</th><th>Urutan antrian</th><th>Kuota kuning<br>(basis/bulan)</th><th>Sisa cuti ${viewY}</th></tr>` +
+    personnel.map(p=>`<tr>
+      <td>${p.name}</td>
+      <td><input type="number" min="1" max="${personnel.length}" value="${p.rank}" onchange="personnel[${p.id}].rank=parseInt(this.value)||${p.rank}; persistPersonnelField(${p.id},'rank',personnel[${p.id}].rank);"></td>
+      <td><input type="number" min="0" max="31" value="${p.kuningQuota}" onchange="personnel[${p.id}].kuningQuota=parseInt(this.value)||0; persistPersonnelField(${p.id},'kuningQuota',personnel[${p.id}].kuningQuota);"></td>
+      <td><input type="number" min="0" max="60" value="${cutiBalanceForYear(p.id, viewY)}" onchange="setCutiBalance(${p.id}, ${viewY}, this.value); refreshAdminOrModal();"></td>
+    </tr>`).join('');
+}
+function renderKuningWindowCard(area){
+  if(!area) return;
+  if(document.getElementById('kuningWindowCard')) document.getElementById('kuningWindowCard').remove();
+  const card = document.createElement('div');
+  card.id = 'kuningWindowCard';
+  card.className = 'card';
+  card.style.marginTop = '14px';
+  card.innerHTML = `<div class="sect" style="margin-top:0">Jadwal proses pengajuan kuning</div>
+    <div class="formrow"><label>Pengajuan dibuka tanggal</label><input type="number" min="1" max="31" value="${kuningWindow.start}" onchange="kuningWindow.start=parseInt(this.value)||1; refreshKuningLockUI(); persistSettings();"></div>
+    <div class="formrow"><label>Pengajuan ditutup tanggal</label><input type="number" min="1" max="31" value="${kuningWindow.end}" onchange="kuningWindow.end=parseInt(this.value)||1; refreshKuningLockUI(); persistSettings();"></div>
+    <div class="formrow"><label>Draft dicetak ke atasan tgl</label><input type="number" min="1" max="31" value="${kuningWindow.draftDay}" onchange="kuningWindow.draftDay=parseInt(this.value)||1; persistSettings();"></div>
+    <div class="formrow"><label>Jadwal diedarkan tgl</label><input type="number" min="1" max="31" value="${kuningWindow.distributeDay}" onchange="kuningWindow.distributeDay=parseInt(this.value)||1; persistSettings();"></div>
+    <div class="note">Saat ini pengajuan kuning: <b>${isKuningWindowOpen() ? 'sedang dibuka' : 'sedang ditutup'}</b>.</div>`;
+  area.appendChild(card);
+}
+function refreshKuningLockUI(){ updateNavBadges(); refreshAdminOrModal(); }
+function refreshAdminOrModal(){
+  if(document.getElementById('adminPage').style.display==='block'){
+    renderAdminPanel();
+    return;
+  }
+  if(activePanel) renderModal();
+}
+function renderLockPanel(area){
+  if(!isAdmin()){ accessDenied(area, '🔐', `Menu ini <b>khusus admin</b>.<br>Silakan masuk sebagai Admin di kanan atas.`); return; }
+  area.innerHTML = `<div class="card">
+    <div class="formrow"><label>Personel</label><select id="lockPersonel">${personnelOptions()}</select></div>
+    <div class="formrow"><label>Tanggal</label><input type="date" id="lockDate"></div>
+    <div class="formrow"><label>Slot</label><select id="lockSlot"><option value="PS">PS (Pagi Siang)</option><option value="M">M (Malam)</option></select></div>
+    <div class="formrow"><label>Alasan</label><input type="text" id="lockReason" placeholder="mis. diminta Kabag"></div>
+    <div id="lockWarn" class="warn"></div>
+    <button class="submit" id="btnAddLock">Kunci jadwal</button>
+    <div class="note">Maksimal 2 lock per slot per tanggal. Tanggal mengikuti bulan yang sedang dibuka.</div>
+  </div>
+  <div class="sect">Daftar lock</div>
+  <div class="reqlist" id="listLock"></div>`;
+  applyDateBounds(document.getElementById('lockDate'));
+  renderLockList();
+  document.getElementById('btnAddLock').addEventListener('click', addLock);
+}
+function renderLockList(){
+  const box = document.getElementById('listLock');
+  if(!box) return;
+  box.innerHTML = lockedList.map(l=>{
+    const p = personnel[l.personnelId];
+    return `<div class="reqrow approved"><span>${p.name} · tgl ${l.date} (${monthTag(l.month,l.year)}) · ${l.slot}${l.reason?' ('+l.reason+')':''}</span><button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button></div>`;
+  }).join('') || `<div class="note">Belum ada lock admin.</div>`;
+}
+function addLock(){
+  const personnelId = parseInt(document.getElementById('lockPersonel').value);
+  const dateVal = document.getElementById('lockDate').value;
+  const slot = document.getElementById('lockSlot').value;
+  const reason = document.getElementById('lockReason').value.trim();
+  const warnBox = document.getElementById('lockWarn');
+  warnBox.classList.remove('show'); warnBox.innerHTML='';
+  const date = dayFromDateInput(dateVal);
+  const month = viewM, year = viewY;
+  if(!date){ warnBox.innerHTML='Pilih tanggal yang valid di dalam bulan yang sedang dibuka.'; warnBox.classList.add('show'); return; }
+  const existing = lockedList.filter(l=>l.date===date && l.slot===slot && l.month===month && l.year===year);
+  if(existing.length>=CAP){ warnBox.innerHTML=`⚠ Slot ${slot} tanggal ${date} sudah penuh (${existing.map(e=>personnel[e.personnelId].name).join(', ')}).`; warnBox.classList.add('show'); return; }
+  if(existing.some(l=>l.personnelId===personnelId)){ warnBox.innerHTML=`⚠ ${personnel[personnelId].name} sudah dikunci di slot ${slot} tanggal ini.`; warnBox.classList.add('show'); return; }
+  const p = personnel[personnelId];
+  const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===personnelId && c.month===month && c.year===year && date>=c.start && date<=c.end);
+  const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===personnelId && k.month===month && k.year===year && date>=k.start && date<=k.end);
+  const doAdd = ()=>{
+    const row = {id: nextId++, personnelId, date, slot, reason, month, year};
+    lockedList.push(row);
+    dbInsert('locked_slots', {id:row.id, personnel_id:personnelId, date, slot, reason, month, year});
+    refreshAdminOrModal();
+    maybeRegenerate(month, year, `Lock ${slot} ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+  };
+  if(onCuti){ warnBox.innerHTML=`⚠ ${p.name} sedang cuti tanggal ${date}. Batalkan cuti dulu kalau memang harus masuk.`; warnBox.classList.add('show'); return; }
+  if(onKuning){
+    warnBox.innerHTML = `⚠ ${p.name} sudah kuning disetujui yang mencakup tanggal ${date}. Mengunci akan membatalkan seluruh rentang kuning tersebut.
+      <label><input type="checkbox" id="lockForce"> Tetap kunci, batalkan kuning</label>`;
+    warnBox.classList.add('show');
+    document.getElementById('lockForce').addEventListener('change', function(){
+      if(this.checked){ kuningList = kuningList.filter(k=>!(k.personnelId===personnelId && k.month===month && k.year===year && date>=k.start && date<=k.end)); doAdd(); }
+    });
+    return;
+  }
+  doAdd();
+}
+function removeLock(id){
+  const item = lockedList.find(l=>l.id===id);
+  lockedList = lockedList.filter(l=>l.id!==id);
+  dbDelete('locked_slots', id);
+  refreshAdminOrModal();
+  if(item) maybeRegenerate(item.month, item.year, `Lock ${item.slot} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`);
+}
+
+/* =====================================================================
+   TUKAR DINAS
+   ===================================================================== */
+function myShiftDaysInWindow(pid, sched, from, to){
+  const out = [];
+  for(let d=from; d<=to; d++){
+    const day = sched.calendar[d-1];
+    if(day.PS.includes(pid)) out.push({d, slot:'PS'});
+    else if(day.M.includes(pid)) out.push({d, slot:'M'});
+  }
+  return out;
+}
+function availablePartnersForDay(sched, day, excludeId){
+  return sched.calendar[day-1].L2.filter(id=>id!==excludeId);
+}
+function buildSwapFormHtml(){
+  const adminMode = isAdmin();
+  const who = adminMode
+    ? `<div class="formrow"><label>Personel</label><select id="swapPersonel">${personnelOptions()}</select></div>`
+    : `<div class="formrow"><label>Personel</label><div class="me"><b>${personnel[currentPersonnelId()].name}</b> (Anda)</div></div>`;
+  const adminNote = adminMode
+    ? `<div class="note" style="margin-bottom:10px">Sebagai admin, Anda bisa memilih pengganti <b>siapa saja</b> — tidak harus yang direkomendasikan sistem (Libur-2). Kalau pilih yang di luar rekomendasi, akan diminta konfirmasi dulu. Rotasi bulan ini otomatis menyesuaikan setelah disimpan.</div>`
+    : '';
+  return `${adminNote}${who}
+    <div class="formrow"><label>Tanggal dinas yang ditukar</label><select id="swapDate"></select></div>
+    <div class="formrow"><label>Pengganti${adminMode?'':' (rekomendasi sistem)'}</label><select id="swapPartner"></select></div>
+    <div class="formrow"><label>Alasan</label><input type="text" id="swapReason" placeholder="opsional"></div>
+    <div id="swapWarn" class="warn"></div>
+    <button class="submit" id="btnAddSwap">${adminMode?'Tambahkan (langsung disetujui)':'Kirim pengajuan tukar dinas'}</button>`;
+}
+function currentSwapPersonnelId(){
+  const el = document.getElementById('swapPersonel');
+  return el ? parseInt(el.value) : currentPersonnelId();
+}
+function partnerStatusForDay(sched, day, pid){
+  const d = sched.calendar[day-1];
+  if(d.L2.includes(pid)) return {avail:true, label:'Libur-2 · tersedia'};
+  if(d.L1.includes(pid)) return {avail:false, label:'Libur-1 · baru pulang malam'};
+  if(d.PS.includes(pid)) return {avail:false, label:'sedang dinas PS'};
+  if(d.M.includes(pid)) return {avail:false, label:'sedang dinas M'};
+  const info = cellInfo(day, pid, sched, viewM, viewY);
+  if(info.cls==='slot-cuti') return {avail:false, label:'cuti'};
+  if(info.cls==='slot-kuning') return {avail:false, label:'kuning'};
+  return {avail:false, label:'menunggu antrian'};
+}
+function refreshSwapDateOptions(sched, from, to){
+  const dateEl = document.getElementById('swapDate');
+  if(!dateEl) return;
+  const pid = currentSwapPersonnelId();
+  const days = myShiftDaysInWindow(pid, sched, from, to);
+  dateEl.innerHTML = days.length
+    ? days.map(x=>`<option value="${x.d}|${x.slot}">Tgl ${x.d} · ${x.slot}</option>`).join('')
+    : `<option value="">(tidak ada jadwal dinas tersisa bulan ini)</option>`;
+  refreshSwapPartnerOptions(sched);
+}
+function refreshSwapPartnerOptions(sched){
+  const dateEl = document.getElementById('swapDate');
+  const partnerEl = document.getElementById('swapPartner');
+  if(!dateEl || !partnerEl) return;
+  if(!dateEl.value){ partnerEl.innerHTML = `<option value="">-</option>`; return; }
+  const d = parseInt(dateEl.value.split('|')[0]);
+  const pid = currentSwapPersonnelId();
+  if(isAdmin()){
+    const opts = personnel.filter(p=>p.id!==pid).map(p=>{
+      const st = partnerStatusForDay(sched, d, p.id);
+      return `<option value="${p.id}">${p.name} — ${st.avail?'✓ ':'⚠ '}${st.label}</option>`;
+    });
+    partnerEl.innerHTML = opts.length ? opts.join('') : `<option value="">-</option>`;
+  } else {
+    const candidates = availablePartnersForDay(sched, d, pid);
+    partnerEl.innerHTML = candidates.length
+      ? candidates.map(id=>`<option value="${id}">${personnel[id].name}</option>`).join('')
+      : `<option value="">(tidak ada yang libur penuh tanggal ini)</option>`;
+  }
+}
+function wireSwapForm(sched, from, to){
+  const pEl = document.getElementById('swapPersonel');
+  if(pEl) pEl.addEventListener('change', ()=> refreshSwapDateOptions(sched, from, to));
+  const dEl = document.getElementById('swapDate');
+  if(dEl) dEl.addEventListener('change', ()=> refreshSwapPartnerOptions(sched));
+  refreshSwapDateOptions(sched, from, to);
+  const btn = document.getElementById('btnAddSwap');
+  if(btn) btn.addEventListener('click', ()=> addSwap(sched));
+}
+function addSwap(sched){
+  const warnBox = document.getElementById('swapWarn');
+  const requesterId = currentSwapPersonnelId();
+  const dateEl = document.getElementById('swapDate');
+  const partnerEl = document.getElementById('swapPartner');
+  const reason = document.getElementById('swapReason').value.trim();
+  if(!dateEl.value){ warnBox.innerHTML='Tidak ada jadwal dinas yang bisa ditukar.'; warnBox.classList.add('show'); return; }
+  if(!partnerEl.value){ warnBox.innerHTML='Belum ada pengganti yang dipilih.'; warnBox.classList.add('show'); return; }
+  const [dStr, slot] = dateEl.value.split('|');
+  const date = parseInt(dStr);
+  const partnerId = parseInt(partnerEl.value);
+  const isAvail = sched.calendar[date-1].L2.includes(partnerId);
+
+  if(!isAdmin() && !isAvail){
+    warnBox.innerHTML = `⚠ ${personnel[partnerId].name} ternyata sudah tidak libur penuh di tanggal ini. Pilih ulang penggantinya.`;
+    warnBox.classList.add('show'); return;
+  }
+  if(isAdmin() && !isAvail && warnBox.dataset.confirmed!=='1'){
+    const st = partnerStatusForDay(sched, date, partnerId);
+    warnBox.innerHTML = `⚠ ${personnel[partnerId].name} sedang <b>${st.label}</b> di tanggal ${date} — di luar rekomendasi sistem.
+      <label><input type="checkbox" id="swapForceOk"> Tetap paksa, saya (admin) yang atur manual</label>`;
+    warnBox.classList.add('show');
+    document.getElementById('swapForceOk').addEventListener('change', function(){
+      if(this.checked){ warnBox.dataset.confirmed='1'; addSwap(sched); }
+    });
+    return;
+  }
+  warnBox.classList.remove('show'); warnBox.innerHTML=''; warnBox.dataset.confirmed='';
+
+  const status = isAdmin() ? 'approved' : 'pending';
+  const row = {id: nextId++, requesterId, date, slot, partnerId, reason, status, month: viewM, year: viewY};
+  swapList.push(row);
+  dbInsert('swap_requests', {id:row.id, requester_id:requesterId, date, slot, partner_id:partnerId, reason, status, month: viewM, year: viewY});
+  refreshAdminOrModal();
+  updateNavBadges();
+  if(status==='approved') maybeRegenerate(viewM, viewY, `Tukar dinas ${personnel[requesterId].name} ↔ ${personnel[partnerId].name} tgl ${date} ditambahkan — jadwal otomatis diperbarui`);
+  else toast('Pengajuan tukar dinas terkirim, menunggu persetujuan admin');
+}
+function buildSwapRecommendationHtml(sched, from, to){
+  let head = `<tr><th></th><th>Nama</th>`;
+  for(let d=from; d<=to; d++) head += `<th>${d}</th>`;
+  head += `</tr>`;
+  let body = personnel.map((p,idx)=>{
+    let cells='';
+    for(let d=from; d<=to; d++){
+      const info = cellInfo(d, idx, sched, viewM, viewY);
+      const avail = sched.calendar[d-1].L2.includes(idx);
+      cells += `<td class="${info.cls}${avail?' avail':''}" title="${info.title}${avail?' · Tersedia untuk tukar dinas':''}">${info.label}</td>`;
+    }
+    return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}</tr>`;
+  }).join('');
+  return `<div class="sect">Rekomendasi ketersediaan (tgl ${from}–${to})</div>
+    <div class="calwrap"><table class="cal"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="legend" style="margin-top:8px">
+      <span><i style="background:rgba(46,125,79,.3);border:2px solid var(--green)"></i> Libur-2 — tersedia, boleh direkomendasikan</span>
+      <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur-1 / sedang bertugas — tidak boleh diganggu</span>
+    </div>`;
+}
+function renderSwapPanel(area){
+  if(!isAdmin() && !isUserRole()){
+    accessDenied(area, '🔄', `Untuk mengajukan tukar dinas, silakan <b>masuk sebagai personel</b> dulu.<br>Pilih nama Anda di kanan atas.`);
+    return;
+  }
+  const rt = realToday();
+  const isRealCurrentMonth = (viewY===rt.y && viewM===rt.m);
+  const sched = isRealCurrentMonth ? schedules[skey(rt.y, rt.m)] : null;
+  const from = rt.d+1, to = sched ? sched.days : 0;
+  const canForm = isRealCurrentMonth && sched && from<=to;
+
+  let topHtml;
+  if(!isRealCurrentMonth){
+    topHtml = `<div class="warn show">🗓️ Tukar dinas hanya berlaku untuk sisa bulan berjalan (<b>${monthNames[rt.m-1]} ${rt.y}</b>). Buka tab bulan itu untuk mengajukan.</div>`;
+  } else if(!sched){
+    topHtml = `<div class="warn show">Jadwal ${monthNames[rt.m-1]} ${rt.y} belum dibuat admin, belum ada yang bisa ditukar.</div>`;
+  } else if(from>to){
+    topHtml = `<div class="warn show">Sudah di penghujung bulan, tidak ada sisa hari untuk ditukar.</div>`;
+  } else {
+    topHtml = `<div class="card">${buildSwapFormHtml()}</div>`;
+  }
+
+  area.innerHTML = `${topHtml}
+    ${canForm ? buildSwapRecommendationHtml(sched, from, to) : ''}
+    <div class="sect">${isAdmin() ? 'Semua pengajuan tukar dinas' : 'Pengajuan tukar dinas Anda'}</div>
+    <div class="reqlist" id="swapReqList"></div>`;
+
+  if(canForm) wireSwapForm(sched, from, to);
+  renderSwapReqList();
+}
+function renderSwapReqList(){
+  const box = document.getElementById('swapReqList');
+  if(!box) return;
+  const visible = isAdmin() ? swapList : swapList.filter(x=>x.requesterId===currentPersonnelId());
+  box.innerHTML = visible.map(item=>{
+    const req = personnel[item.requesterId], partner = personnel[item.partnerId];
+    const label = `${req.name} → ${partner.name}: tgl ${item.date} · ${item.slot} (${monthTag(item.month,item.year)})${item.reason?' ('+item.reason+')':''}`;
+    let actions = '';
+    if(isAdmin() && item.status==='pending'){
+      actions = `<div class="actions">
+        <button class="small ok-btn" onclick="setStatus('swap',${item.id},'approved')">Setuju</button>
+        <button class="small reject-btn" onclick="setStatus('swap',${item.id},'rejected')">Tolak</button>
+      </div>`;
+    } else if(isAdmin()){
+      actions = `<button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>`;
+    } else if(item.requesterId===currentPersonnelId()){
+      actions = `<span class="badge ${item.status}">${item.status==='pending'?'Menunggu':item.status==='approved'?'Disetujui':'Ditolak'}</span>`;
+    }
+    return `<div class="reqrow ${item.status}"><span>${label}</span>${actions}</div>`;
+  }).join('') || `<div class="note">Belum ada pengajuan tukar dinas.</div>`;
+}
+
+/* =====================================================================
+   FORM CUTI / KUNING — dengan UID unik supaya tidak bentrok antar konteks
+   ===================================================================== */
+function renderRequestPanel(area, kind, ctx){
+  const isCuti = kind==='cuti';
+  ctx = ctx || 'personel';
+  const uid = ctx + '_' + kind;
+
+  if(!isAdmin() && !isUserRole()){
+    accessDenied(area, '👤', `Untuk mengajukan ${isCuti?'cuti':'kuning'}, silakan <b>masuk sebagai personel</b> dulu.<br>Pilih nama Anda di kanan atas.`);
+    return;
+  }
+  if(!isCuti && !isAdmin() && !isKuningWindowOpen()){
+    accessDenied(area, '⏳', `Pengajuan kuning sedang <b>ditutup</b>.<br>Dibuka lagi mulai ${nextKuningOpenLabel()} (rentang tanggal ${kuningWindow.start}–${kuningWindow.end} tiap bulan).`);
+    return;
+  }
+
+  const windowBanner = (!isCuti && isAdmin() && !isKuningWindowOpen())
+    ? `<div class="warn show">⏳ Di luar jadwal pengajuan kuning (tgl ${kuningWindow.start}–${kuningWindow.end}), dibuka lagi ${nextKuningOpenLabel()}. Personel tidak bisa mengajukan sekarang, tapi Anda sebagai admin tetap bisa menambahkan.</div>`
+    : '';
+
+  const dateFields = `
+    <div class="formrow"><label>Tanggal mulai</label><input type="date" id="reqStart_${uid}"></div>
+    <div class="formrow"><label>Tanggal selesai</label><input type="date" id="reqEnd_${uid}"></div>
+    ${isCuti ? `<div class="formrow"><label>Alasan</label><input type="text" id="reqReason_${uid}" placeholder="opsional, mis. kedukaan"></div>` : ''}`;
+
+  let who, btnText;
+  const personelSelectId = 'reqPersonel_' + uid;
+  if(isAdmin()){
+    who = `<div class="formrow"><label>Personel</label><select id="${personelSelectId}">${personnelOptions()}</select></div>`;
+    btnText = 'Tambahkan (langsung disetujui)';
+  } else {
+    const me = personnel[currentPersonnelId()];
+    who = `<div class="formrow"><label>Personel</label><div class="me"><b>${me.name}</b> (Anda)</div></div>`;
+    btnText = 'Kirim pengajuan';
+  }
+
+  area.innerHTML = `${windowBanner}
+    <div class="card">${who}
+      <div class="quotainfo" id="quotaInfo_${uid}"></div>
+      ${dateFields}
+      <div id="reqWarn_${uid}" class="warn"></div>
+      <button class="submit" id="btnAddReq_${uid}" type="button">${btnText}</button>
+    </div>
+    <div class="sect">${isAdmin() ? 'Semua pengajuan' : 'Pengajuan Anda'}</div>
+    <div class="reqlist" id="reqList_${uid}"></div>`;
+
+  ['reqStart_'+uid, 'reqEnd_'+uid].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) applyDateBounds(el);
+  });
+
+  renderReqListById('reqList_'+uid, kind);
+  updateQuotaInfoById('quotaInfo_'+uid, kind, personelSelectId);
+
+  if(isAdmin()){
+    const sel = document.getElementById(personelSelectId);
+    if(sel) sel.addEventListener('change', ()=> updateQuotaInfoById('quotaInfo_'+uid, kind, personelSelectId));
+  }
+
+  const btn = document.getElementById('btnAddReq_'+uid);
+  if(btn){
+    btn.addEventListener('click', ()=>{
+      if(isCuti) addCutiByCtx(uid, ctx);
+      else addKuningByCtx(uid, ctx);
+    });
+  }
+}
+
+function renderReqListById(boxId, kind){
+  const box = document.getElementById(boxId);
+  if(!box) return;
+  const list = kind==='cuti' ? cutiList : kuningList;
+  const visible = isAdmin() ? list : list.filter(x=>x.personnelId===currentPersonnelId());
+  const sorted = visible.slice().sort((a,b)=> b.id - a.id);
+  box.innerHTML = sorted.length ? sorted.map(item=>{
+    const p = personnel[item.personnelId];
+    const label = kind==='cuti'
+      ? `<span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}${item.reason?' · '+item.reason:''}</span>`
+      : `<span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}</span>`;
+    let actions = '';
+    if(isAdmin() && item.status==='pending'){
+      actions = `<div class="actions">
+        <button class="small ok-btn" onclick="setStatus('${kind}',${item.id},'approved')">Setuju</button>
+        <button class="small reject-btn" onclick="setStatus('${kind}',${item.id},'rejected')">Tolak</button>
+      </div>`;
+    } else if(isAdmin()){
+      actions = `<button class="x" onclick="removeReq('${kind}',${item.id})" aria-label="Hapus">×</button>`;
+    } else if(item.personnelId===currentPersonnelId()){
+      actions = `<span class="badge ${item.status}">${item.status==='pending'?'Menunggu':item.status==='approved'?'Disetujui':'Ditolak'}</span>`;
+    }
+    return `<div class="reqrow ${item.status}"><span>${label}</span>${actions}</div>`;
+  }).join('') : `<div class="note">Belum ada pengajuan.</div>`;
+}
+
+function updateQuotaInfoById(boxId, kind, selectId){
+  const box = document.getElementById(boxId);
+  if(!box) return;
+  let pid;
+  if(isAdmin()){
+    const sel = document.getElementById(selectId);
+    pid = sel ? parseInt(sel.value) : 0;
+  } else {
+    pid = currentPersonnelId();
+  }
+  if(pid==null || isNaN(pid)){ box.innerHTML=''; return; }
+  const p = personnel[pid];
+  if(kind==='kuning'){
+    const quota = effectiveKuningQuota(pid, viewY, viewM);
+    const used = kuningUsedInMonth(pid, viewM, viewY);
+    const sisa = Math.max(quota-used, 0);
+    box.innerHTML = `Kuota kuning <b>${p.name}</b> bulan ${monthTag(viewM,viewY)}: sisa <b>${sisa}</b> dari ${quota} hari${used>0?` (${used} hari sudah terpakai/menunggu)`:''}.`;
+  } else {
+    const balance = cutiBalanceForYear(pid, viewY);
+    const used = cutiUsedInYear(pid, viewY);
+    const sisa = Math.max(balance-used, 0);
+    box.innerHTML = `Sisa cuti <b>${p.name}</b> tahun ${viewY}: <b>${sisa}</b> dari ${balance} hari${used>0?` (${used} hari sudah terpakai/menunggu)`:''}.`;
+  }
+}
+
+function addCutiByCtx(uid, ctx){
+  const warnBox = document.getElementById('reqWarn_'+uid);
+  if(!warnBox) return;
+  warnBox.classList.remove('show'); warnBox.innerHTML='';
+
+  let personnelId;
+  if(isAdmin()){
+    const sel = document.getElementById('reqPersonel_'+uid);
+    personnelId = sel ? parseInt(sel.value) : 0;
+  } else {
+    personnelId = currentPersonnelId();
+  }
+  const month = viewM, year = viewY;
+  const startEl = document.getElementById('reqStart_'+uid);
+  const endEl   = document.getElementById('reqEnd_'+uid);
+  const reasonEl= document.getElementById('reqReason_'+uid);
+  const start = dayFromDateInput(startEl ? startEl.value : '');
+  const end   = dayFromDateInput(endEl ? endEl.value : '') || start;
+  const reason= reasonEl ? reasonEl.value.trim() : '';
+
+  if(!start){ warnBox.innerHTML='Pilih tanggal mulai yang valid.'; warnBox.classList.add('show'); return; }
+  if(end<start){ warnBox.innerHTML='Tanggal selesai tidak boleh sebelum tanggal mulai.'; warnBox.classList.add('show'); return; }
+
+  const conflict = lockedList.filter(l=>l.personnelId===personnelId && l.month===month && l.year===year && l.date>=start && l.date<=end);
+  if(conflict.length){
+    warnBox.innerHTML = `⚠ Tanggal ini sudah dikunci admin (${conflict.map(c=>'tgl '+c.date+' '+c.slot).join(', ')}). Cuti di tanggal terkunci harus lewat admin langsung.`;
+    warnBox.classList.add('show'); return;
+  }
+
+  const p = personnel[personnelId];
+  const balance = cutiBalanceForYear(personnelId, year);
+  const used = cutiUsedInYear(personnelId, year);
+  const requested = end-start+1;
+  const remaining = balance - used;
+
+  const doAdd = ()=>{
+    const status = isAdmin() ? 'approved' : 'pending';
+    const row = {id: nextId++, personnelId, start, end, reason, status, month, year};
+    cutiList.push(row);
+    dbInsert('cuti_requests', {id:row.id, personnel_id:personnelId, start_day:start, end_day:end, reason, status, month, year});
+    refreshAdminOrModal();
+    updateNavBadges();
+    if(status==='approved') maybeRegenerate(month, year, `Cuti ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+    else toast('Pengajuan cuti terkirim, menunggu persetujuan admin');
+  };
+
+  if(requested>remaining){
+    warnBox.innerHTML = `⚠ Sisa cuti ${p.name} tahun ${year} tinggal <b>${Math.max(remaining,0)}</b> dari ${balance} hari, tapi yang diajukan ${requested} hari.
+      <label><input type="checkbox" id="cutiForce_${uid}"> Tetap ajukan (melebihi sisa cuti)</label>`;
+    warnBox.classList.add('show');
+    const cb = document.getElementById('cutiForce_'+uid);
+    if(cb) cb.addEventListener('change', function(){ if(this.checked) doAdd(); });
+    return;
+  }
+  doAdd();
+}
+
+function addKuningByCtx(uid, ctx){
+  const warnBox = document.getElementById('reqWarn_'+uid);
+  if(!warnBox) return;
+  warnBox.classList.remove('show'); warnBox.innerHTML='';
+
+  if(!isAdmin() && !isKuningWindowOpen()){
+    warnBox.innerHTML = `⏳ Pengajuan kuning sedang ditutup. Dibuka lagi mulai ${nextKuningOpenLabel()}.`;
+    warnBox.classList.add('show');
+    return;
+  }
+
+  let personnelId;
+  if(isAdmin()){
+    const sel = document.getElementById('reqPersonel_'+uid);
+    personnelId = sel ? parseInt(sel.value) : 0;
+  } else {
+    personnelId = currentPersonnelId();
+  }
+  const month = viewM, year = viewY;
+  const startEl = document.getElementById('reqStart_'+uid);
+  const endEl   = document.getElementById('reqEnd_'+uid);
+  const start = dayFromDateInput(startEl ? startEl.value : '');
+  const end   = dayFromDateInput(endEl ? endEl.value : '') || start;
+
+  if(!start){ warnBox.innerHTML='Pilih tanggal mulai yang valid.'; warnBox.classList.add('show'); return; }
+  if(end<start){ warnBox.innerHTML='Tanggal selesai tidak boleh sebelum tanggal mulai.'; warnBox.classList.add('show'); return; }
+
+  const p = personnel[personnelId];
+  const quota = effectiveKuningQuota(personnelId, year, month);
+  const used = kuningUsedInMonth(personnelId, month, year);
+  const requested = end-start+1;
+  const remaining = quota - used;
+
+  const doAdd = ()=>{
+    const status = isAdmin() ? 'approved' : 'pending';
+    const row = {id: nextId++, personnelId, start, end, status, month, year};
+    kuningList.push(row);
+    dbInsert('kuning_requests', {id:row.id, personnel_id:personnelId, start_day:start, end_day:end, status, month, year});
+    refreshAdminOrModal();
+    updateNavBadges();
+    if(status==='approved') maybeRegenerate(month, year, `Kuning ${p.name} ditambahkan — jadwal ${monthNames[month-1]} ${year} otomatis diperbarui`);
+    else toast('Pengajuan kuning terkirim, menunggu persetujuan admin');
+  };
+
+  if(requested>remaining){
+    warnBox.innerHTML = `⚠ Kuota kuning ${p.name} bulan ${monthTag(month,year)} tersisa <b>${Math.max(remaining,0)}</b> dari ${quota} hari, tapi yang diajukan ${requested} hari.
+      ${quota<p.kuningQuota?' Kuota sedang diturunkan karena bulan lalu dipakai penuh.':''}
+      <label><input type="checkbox" id="kuningForce_${uid}"> Tetap ajukan (melebihi kuota)</label>`;
+    warnBox.classList.add('show');
+    const cb = document.getElementById('kuningForce_'+uid);
+    if(cb) cb.addEventListener('change', function(){ if(this.checked) doAdd(); });
+    return;
+  }
+  doAdd();
+}
+
+/* =====================================================================
+   HELPER UMUM untuk request
+   ===================================================================== */
+function maybeRegenerate(month, year, message){
+  if(!schedules[skey(year, month)]) return;
+  const re = generateAndStore(year, month);
+  renderMonthTabs();
+  if(year===viewY && month===viewM) renderScheduleArea();
+  toast(message + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
+}
+function getList(kind){ return kind==='cuti' ? cutiList : kind==='kuning' ? kuningList : swapList; }
+function reqLabel(kind){ return kind==='cuti' ? 'Cuti' : kind==='kuning' ? 'Kuning' : 'Tukar dinas'; }
+function reqPartyName(kind, item){
+  return kind==='swap' ? `${personnel[item.requesterId].name} ↔ ${personnel[item.partnerId].name}` : personnel[item.personnelId].name;
+}
+function setStatus(kind, id, status){
+  const item = getList(kind).find(x=>x.id===id);
+  if(!item) return;
+  item.status = status;
+  const table = kind==='cuti' ? 'cuti_requests' : kind==='kuning' ? 'kuning_requests' : 'swap_requests';
+  dbUpdate(table, id, {status});
+  refreshAdminOrModal();
+  const label = reqLabel(kind), pname = reqPartyName(kind, item);
+  maybeRegenerate(item.month, item.year, status==='approved'
+    ? `${label} ${pname} disetujui — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`
+    : `${label} ${pname} ditolak — jadwal ${monthNames[item.month-1]} ${item.year} otomatis dihitung ulang`);
+  updateNavBadges();
+}
+function removeReq(kind, id){
+  const item = getList(kind).find(x=>x.id===id);
+  if(kind==='cuti') cutiList = cutiList.filter(c=>c.id!==id);
+  else if(kind==='kuning') kuningList = kuningList.filter(k=>k.id!==id);
+  else swapList = swapList.filter(s=>s.id!==id);
+  const table = kind==='cuti' ? 'cuti_requests' : kind==='kuning' ? 'kuning_requests' : 'swap_requests';
+  dbDelete(table, id);
+  refreshAdminOrModal();
+  updateNavBadges();
+  if(item && item.status==='approved'){
+    maybeRegenerate(item.month, item.year, `${reqLabel(kind)} ${reqPartyName(kind,item)} dihapus — jadwal ${monthNames[item.month-1]} ${item.year} otomatis diperbarui`);
+  }
+}
+
+/* =====================================================================
+   SCHEDULE ENGINE
+   ===================================================================== */
+function generateSchedule(year, month, initQueue, initCur){
+  const days = daysInMonthOf(year, month);
+  const order = personnel.slice().sort((a,b)=>a.rank-b.rank).map(p=>p.id);
+  function isOnCuti(pid, day){ return cutiList.some(c=>c.status==='approved' && c.personnelId===pid && c.month===month && c.year===year && day>=c.start && day<=c.end); }
+  function isOnKuning(pid, day){ return kuningList.some(k=>k.status==='approved' && k.personnelId===pid && k.month===month && k.year===year && day>=k.start && day<=k.end); }
+  function isSwappedOut(pid, day){ return swapList.some(s=>s.status==='approved' && s.requesterId===pid && s.month===month && s.year===year && s.date===day); }
+  function eligible(pid, day){ return !isOnCuti(pid, day) && !isOnKuning(pid, day) && !isSwappedOut(pid, day); }
+  function removeFromArray(arr, id){ const i=arr.indexOf(id); if(i>=0) arr.splice(i,1); }
+  function takeNEligible(arr, day, n, exclude){
+    const taken=[]; let i=0;
+    while(taken.length<n && i<arr.length){
+      const id=arr[i];
+      if(exclude.includes(id)){ i++; continue; }
+      if(eligible(id, day)){ arr.splice(i,1); taken.push(id); } else { i++; }
+    }
+    return taken;
+  }
+  const pairHistory = {};
+  function pairKey(a,b){ return a<b ? a+'_'+b : b+'_'+a; }
+  function pairCount(a,b){ return pairHistory[pairKey(a,b)] || 0; }
+  function bumpPair(a,b){ const k=pairKey(a,b); pairHistory[k]=(pairHistory[k]||0)+1; }
+  function bumpAllPairs(arr){ for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++) bumpPair(arr[i],arr[j]); }
+  const PAIR_WINDOW = 6;
+  function takePSPairDiverse(arr, day, exclude){
+    const idxs = [];
+    for(let i=0; i<arr.length && idxs.length<PAIR_WINDOW; i++){
+      const id = arr[i];
+      if(exclude.includes(id)) continue;
+      if(!eligible(id, day)) continue;
+      idxs.push(i);
+    }
+    if(idxs.length===0) return [];
+    if(idxs.length===1){ const id=arr[idxs[0]]; arr.splice(idxs[0],1); return [id]; }
+    let bestPair=null, bestScore=Infinity, bestPos=Infinity;
+    for(let a=0; a<idxs.length; a++){
+      for(let b=a+1; b<idxs.length; b++){
+        const id1=arr[idxs[a]], id2=arr[idxs[b]];
+        const score = pairCount(id1,id2);
+        const posScore = idxs[a]+idxs[b];
+        if(score<bestScore || (score===bestScore && posScore<bestPos)){ bestScore=score; bestPos=posScore; bestPair=[idxs[a],idxs[b]]; }
+      }
+    }
+    const [ia,ib] = bestPair;
+    const id1=arr[ia], id2=arr[ib];
+    const hi=Math.max(ia,ib), lo=Math.min(ia,ib);
+    arr.splice(hi,1); arr.splice(lo,1);
+    return [id1,id2];
+  }
+  let waitQueue = initQueue ? initQueue.slice() : order.slice(CAP*2);
+  let pendingM = [];
+  let cur = initCur ? { PS:initCur.PS.slice(), M:initCur.M.slice(), L1:initCur.L1.slice(), L2:initCur.L2.slice() } : null;
+  let calendar = [];
+  let logs = [];
+  let monthPS={}, monthM={};
+  personnel.forEach(p=>{ monthPS[p.id]=0; monthM[p.id]=0; });
+  for(let day=1; day<=days; day++){
+    const adminLockPS = lockedList.filter(l=>l.date===day && l.slot==='PS' && l.month===month && l.year===year).map(l=>l.personnelId);
+    const adminLockM  = lockedList.filter(l=>l.date===day && l.slot==='M' && l.month===month && l.year===year).map(l=>l.personnelId);
+    const swapInPS = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
+    const swapInM  = swapList.filter(s=>s.status==='approved' && s.slot==='M'  && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
+    const lockPSList = Array.from(new Set([...adminLockPS, ...swapInPS])).slice(0,CAP);
+    const lockMList  = Array.from(new Set([...adminLockM,  ...swapInM ])).slice(0,CAP);
+    let today = { PS: lockPSList.slice(), M: lockMList.slice(), L1:[], L2:[] };
+    [...lockPSList, ...lockMList].forEach(id=>{ removeFromArray(waitQueue,id); removeFromArray(pendingM,id); });
+    adminLockPS.forEach(id=> logs.push({type:'info', text:`Tgl ${day}: PS dikunci untuk ${personnel[id].name} (perintah atasan).`}));
+    adminLockM.forEach(id=> logs.push({type:'info', text:`Tgl ${day}: M dikunci untuk ${personnel[id].name} (perintah atasan).`}));
+    swapInPS.forEach(id=>{ const s=swapList.find(x=>x.status==='approved'&&x.slot==='PS'&&x.date===day&&x.month===month&&x.year===year&&x.partnerId===id);
+      logs.push({type:'info', text:`Tgl ${day}: PS ditukar — ${personnel[id].name} menggantikan ${s?personnel[s.requesterId].name:'?'} (tukar dinas).`}); });
+    swapInM.forEach(id=>{ const s=swapList.find(x=>x.status==='approved'&&x.slot==='M'&&x.date===day&&x.month===month&&x.year===year&&x.partnerId===id);
+      logs.push({type:'info', text:`Tgl ${day}: M ditukar — ${personnel[id].name} menggantikan ${s?personnel[s.requesterId].name:'?'} (tukar dinas).`}); });
+    let naturalM = [];
+    let isBootstrap = (cur === null);
+    if(isBootstrap){ naturalM = order.slice(CAP, CAP*2); }
+    else {
+      today.L1 = cur.M.slice();
+      today.L2 = cur.L1.slice();
+      cur.L2.forEach(id=> waitQueue.push(id));
+      naturalM = cur.PS.slice();
+    }
+    naturalM.forEach(id=>{
+      if(today.PS.includes(id) || today.M.includes(id)) return;
+      if(today.M.length>=CAP){ pendingM.push(id); logs.push({type:'info', text:`Tgl ${day}: giliran M ${personnel[id].name} tertunda, slot penuh oleh lock.`}); return; }
+      if(eligible(id, day)) today.M.push(id);
+      else { pendingM.push(id); logs.push({type:'bad', text:`Tgl ${day}: giliran M ${personnel[id].name} tertunda (cuti/kuning).`}); }
+    });
+    let mNeeded = CAP - today.M.length;
+    if(mNeeded>0){
+      const fromPending = takeNEligible(pendingM, day, mNeeded, today.PS.concat(today.M));
+      fromPending.forEach(id=>{ today.M.push(id); logs.push({type:'info', text:`Tgl ${day}: giliran M tertunda ${personnel[id].name} terpenuhi.`}); });
+      mNeeded = CAP - today.M.length;
+    }
+    if(mNeeded>0){
+      const fromQueue = takeNEligible(waitQueue, day, mNeeded, today.PS.concat(today.M));
+      fromQueue.forEach(id=> today.M.push(id));
+      mNeeded = CAP - today.M.length;
+      if(mNeeded>0) logs.push({type:'bad', text:`Tgl ${day}: slot M kurang ${mNeeded} orang.`});
+    }
+    if(isBootstrap){
+      order.slice(0,CAP).forEach(id=>{
+        if(today.PS.includes(id) || today.M.includes(id)) return;
+        if(eligible(id, day)) today.PS.push(id);
+        else { waitQueue.push(id); logs.push({type:'bad', text:`Tgl 1: ${personnel[id].name} rencana PS tapi cuti/kuning, digeser ke antrian.`}); }
+      });
+    }
+    let psNeeded = CAP - today.PS.length;
+    if(psNeeded>0){
+      const exclude = today.PS.concat(today.M);
+      const fromQueue = psNeeded===2 ? takePSPairDiverse(waitQueue, day, exclude) : takeNEligible(waitQueue, day, psNeeded, exclude);
+      fromQueue.forEach(id=> today.PS.push(id));
+      psNeeded = CAP - today.PS.length;
+      if(psNeeded>0) logs.push({type:'bad', text:`Tgl ${day}: slot PS kurang ${psNeeded} orang.`});
+    }
+    bumpAllPairs(today.PS);
+    bumpAllPairs(today.M);
+    calendar.push({ day, PS: today.PS.slice(), M: today.M.slice(), L1: today.L1.slice(), L2: today.L2.slice(),
+      lockedPS: adminLockPS.slice(), lockedM: adminLockM.slice(), swappedPS: swapInPS.slice(), swappedM: swapInM.slice() });
+    today.PS.forEach(id=> monthPS[id]++);
+    today.M.forEach(id=> monthM[id]++);
+    cur = today;
+  }
+  const partnerSets = {};
+  personnel.forEach(p=> partnerSets[p.id] = new Set());
+  calendar.forEach(d=>{
+    [d.PS, d.M].forEach(arr=>{
+      for(let i=0;i<arr.length;i++) for(let j=0;j<arr.length;j++) if(i!==j) partnerSets[arr[i]].add(arr[j]);
+    });
+  });
+  const sizes = personnel.map(p=> partnerSets[p.id].size);
+  const avgPartner = sizes.length ? (sizes.reduce((a,b)=>a+b,0)/sizes.length) : 0;
+  const maxPossible = Math.max(personnel.length-1, 0);
+  logs.unshift({type:'info', text:`Variasi pasangan bulan ini: rata-rata tiap personel bertemu ${avgPartner.toFixed(1)} partner berbeda (dari maksimal ${maxPossible}).`});
+  return { calendar, monthPS, monthM, logs, days, endQueue: waitQueue.slice(), endCur: cur };
+}
+function generateAndStore(y, m){
+  const pv = prevMonthYear(y, m);
+  const prev = schedules[skey(pv.y, pv.m)];
+  const res = prev ? generateSchedule(y, m, prev.endQueue, prev.endCur) : generateSchedule(y, m, null, null);
+  res.logs.unshift({type:'info', text: prev
+    ? `Rotasi disambung dari akhir ${monthNames[pv.m-1]} ${pv.y}.`
+    : `${monthNames[m-1]} ${y} dimulai dari urutan antrian awal (bulan sebelumnya belum digenerate).`});
+  schedules[skey(y, m)] = res;
+  persistSchedule(y, m, res);
+  let regenerated = 0, last = res, n = nextMonthYear(y, m);
+  while(schedules[skey(n.y, n.m)]){
+    const r = generateSchedule(n.y, n.m, last.endQueue, last.endCur);
+    r.logs.unshift({type:'info', text:`Rotasi disambung dari akhir ${monthNames[prevMonthYear(n.y,n.m).m-1]} ${prevMonthYear(n.y,n.m).y}.`});
+    schedules[skey(n.y, n.m)] = r;
+    persistSchedule(n.y, n.m, r);
+    last = r; regenerated++;
+    n = nextMonthYear(n.y, n.m);
+  }
+  return regenerated;
+}
+document.getElementById('btnGenerate').addEventListener('click', ()=>{
+  const re = generateAndStore(viewY, viewM);
+  renderAll();
+  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
+});
+
+/* =====================================================================
+   RENDER JADWAL
+   ===================================================================== */
+function cellInfo(day, personnelId, result, month, year){
+  const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===personnelId && c.month===month && c.year===year && day>=c.start && day<=c.end);
+  const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===personnelId && k.month===month && k.year===year && day>=k.start && day<=k.end);
+  const swappedOut = swapList.some(s=>s.status==='approved' && s.requesterId===personnelId && s.month===month && s.year===year && s.date===day);
+  const d = result.calendar[day-1];
+  const isPS = d.PS.includes(personnelId), isM = d.M.includes(personnelId);
+  const locked = (isPS && d.lockedPS.includes(personnelId)) || (isM && d.lockedM.includes(personnelId));
+  const swappedIn = (isPS && d.swappedPS && d.swappedPS.includes(personnelId)) || (isM && d.swappedM && d.swappedM.includes(personnelId));
+  if(onCuti) return {cls:'slot-cuti', label:'C', title:'Cuti'};
+  if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning'};
+  if(swappedOut) return {cls:'slot-swap', label:'T', title:'Tukar dinas — jadwal hari ini digantikan personel lain'};
+  if(isPS) return {cls:'slot-PS'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'PS', title: locked?'PS (terkunci admin)': swappedIn?'PS (menggantikan, tukar dinas)':'Pagi Siang'};
+  if(isM) return {cls:'slot-M'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'M', title: locked?'M (terkunci admin)': swappedIn?'M (menggantikan, tukar dinas)':'Malam'};
+  if(d.L1.includes(personnelId)) return {cls:'slot-off', label:'–', title:'Libur-1 (baru pulang malam)'};
+  if(d.L2.includes(personnelId)) return {cls:'slot-off', label:'–', title:'Libur-2 (libur penuh)'};
+  return {cls:'slot-off', label:'–', title:'Menunggu giliran di antrian'};
+}
+function selectionEnd(year, month, days){
+  const rt = realToday();
+  if(year<rt.y || (year===rt.y && month<rt.m)) return days;
+  if(year===rt.y && month===rt.m) return Math.min(rt.d, days);
+  return 0;
+}
+function buildScheduleBlockHtml(year, month){
+  return `<div class="sched-block">
+    <div class="sched-title">
+      <div class="t1">JADWAL DINAS SHIFT PENGELOLA DATABASE BMKG</div>
+      <div class="t2">DIREKTORAT DATA DAN KOMPUTASI</div>
+      <div class="t3">${monthNames[month-1]} ${year}</div>
+    </div>
+    <div class="calwrap" id="calWrap"></div>
+    <div class="legend">
+      <span><i style="background:#DDEFEE;border:1px solid #0A4552"></i> PS</span>
+      <span><i style="background:#E6E1F5;border:1px solid #3B2E75"></i> M</span>
+      <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur/antre</span>
+      <span><i style="background:var(--red)"></i> Cuti</span>
+      <span><i style="background:var(--kuning)"></i> Kuning</span>
+      <span><i style="background:#fff;border:2px solid var(--indigo)"></i> Terkunci admin</span>
+      <span><i style="background:#D7ECEA;border:1px solid #0F6B5C"></i> Ditukar (digantikan)</span>
+      <span><i style="background:#fff;border:2px dashed var(--green)"></i> Pengganti (tukar dinas)</span>
+      <span><i style="background:rgba(31,95,191,.25);border:2px solid var(--blue)"></i> Tanggal 1 s/d hari ini</span>
+    </div>
+    <div class="log" id="logBox"></div>
+  </div>`;
+}
+function fillScheduleBlock(year, month, result){
+  const rt = realToday();
+  const selTo = selectionEnd(year, month, result.days);
+  const isTodayCol = d => year===rt.y && month===rt.m && d===rt.d;
+  let head = `<tr><th></th><th>Nama</th>`;
+  for(let d=1; d<=result.days; d++){
+    let cls = '';
+    if(d<=selTo){ cls = 'sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (isTodayCol(d)?' today':''); }
+    head += `<th class="${cls}">${d}</th>`;
+  }
+  head += `<th class="total">PS</th><th class="total">M</th><th class="total">Total</th></tr>`;
+  let body = personnel.map((p,idx)=>{
+    let cells='';
+    for(let d=1; d<=result.days; d++){
+      const info = cellInfo(d, idx, result, month, year);
+      let sel = '';
+      if(d<=selTo){ sel = ' sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (idx===personnel.length-1?' sel-b':''); }
+      cells += `<td class="${info.cls}${sel}" title="${info.title}">${info.label}</td>`;
+    }
+    return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}
+      <td class="total">${result.monthPS[idx]}</td><td class="total">${result.monthM[idx]}</td>
+      <td class="total">${result.monthPS[idx]+result.monthM[idx]}</td></tr>`;
+  }).join('');
+  document.getElementById('calWrap').innerHTML = `<table class="cal"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  const problems = result.logs.filter(l=>l.type!=='ok');
+  const hasBad = problems.some(l=>l.type==='bad');
+  document.getElementById('logBox').innerHTML = (hasBad ? '' : `<div class="ok">Tidak ada konflik. Semua slot PS/M (2+2 tiap hari) terisi.</div>`)
+    + problems.map(l=>`<div class="${l.type}">${l.type==='bad'?'✕':'→'} ${l.text}</div>`).join('');
+}
+function renderScheduleArea(){
+  const area = document.getElementById('scheduleArea');
+  const res = schedules[skey(viewY, viewM)];
+  if(!res){
+    const label = `${monthNames[viewM-1]} ${viewY}`;
+    if(isAdmin()){
+      const pv = prevMonthYear(viewY, viewM);
+      const hasPrev = !!schedules[skey(pv.y, pv.m)];
+      area.innerHTML = `<div class="empty-note">Jadwal <b>${label}</b> belum dibuat.<br>Klik <b>Generate jadwal ${monthNames[viewM-1]}</b> di kanan atas.<br>${hasPrev
+        ? `Rotasi akan disambung dari akhir ${monthNames[pv.m-1]} ${pv.y}.`
+        : `${monthNames[pv.m-1]} ${pv.y} belum digenerate, jadi rotasi dimulai dari urutan antrian awal.`}</div>`;
+    } else {
+      area.innerHTML = `<div class="empty-note">Jadwal <b>${label}</b> belum tersedia.<br>Admin belum membuat jadwal untuk bulan ini.</div>`;
+    }
+    return;
+  }
+  area.innerHTML = buildScheduleBlockHtml(viewY, viewM);
+  fillScheduleBlock(viewY, viewM, res);
+}
+function renderMonthTabs(){
+  document.getElementById('yearLabel').textContent = viewY;
+  const box = document.getElementById('monthTabs');
+  box.innerHTML = monthNames.map((n,i)=>{
+    const m = i+1;
+    const has = !!schedules[skey(viewY, m)];
+    return `<button class="mtab ${m===viewM?'active':''}" role="tab" aria-selected="${m===viewM}" data-m="${m}">${n}${has?'<span class="dot" title="Jadwal sudah dibuat"></span>':''}</button>`;
+  }).join('');
+  box.querySelectorAll('.mtab').forEach(b=> b.addEventListener('click', ()=>{ viewM = parseInt(b.dataset.m); renderAll(); }));
+  const act = box.querySelector('.mtab.active');
+  if(act && act.scrollIntoView) act.scrollIntoView({inline:'center', block:'nearest'});
+}
+selYear.addEventListener('change', ()=>{ viewY = parseInt(selYear.value); renderAll(); });
+
+/* =====================================================================
+   PANEL ADMIN
+   ===================================================================== */
+function showAdminPage(){
+  if(!isAdmin()){ toast('Hanya admin yang bisa membuka panel ini'); return; }
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('adminPage').style.display = 'block';
+  document.body.style.overflow = '';
+  adminTab = 'setup';
+  document.querySelectorAll('.admin-tab').forEach(t=> t.classList.toggle('active', t.dataset.atab==='setup'));
+  renderAdminPanel();
+  window.scrollTo(0,0);
+}
+function hideAdminPage(){
+  document.getElementById('adminPage').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+  renderAll();
+}
+document.getElementById('btnOpenAdmin').addEventListener('click', showAdminPage);
+document.getElementById('btnBackFromAdmin').addEventListener('click', hideAdminPage);
+document.getElementById('adminUserChipBtn').addEventListener('click', ()=>{
+  if(confirm('Logout dari akun admin?')) logout();
+});
+document.getElementById('btnAdminGenerate').addEventListener('click', ()=>{
+  const re = generateAndStore(viewY, viewM);
+  renderMonthTabs();
+  renderScheduleArea();
+  renderAdminPanel();
+  toast(`Jadwal ${monthNames[viewM-1]} ${viewY} dibuat` + (re ? ` · ${re} bulan sesudahnya ikut disesuaikan` : ''));
+});
+document.getElementById('btnAdminPrint').addEventListener('click', ()=>{
+  adminTab = 'print';
+  document.querySelectorAll('.admin-tab').forEach(t=> t.classList.toggle('active', t.dataset.atab==='print'));
+  renderAdminPanel();
+});
+document.querySelectorAll('.admin-tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    adminTab = t.dataset.atab;
+    document.querySelectorAll('.admin-tab').forEach(x=> x.classList.toggle('active', x===t));
+    renderAdminPanel();
+  });
+});
+
+function adminPanelHead(iconSvg, title, sub){
+  return `<div class="admin-panel-head">
+    <div class="ph-icon">${iconSvg}</div>
+    <div class="ph-text">
+      <h3>${title}</h3>
+      <p>${sub}</p>
+    </div>
+  </div>`;
+}
+
+function renderAdminPanel(){
+  const body = document.getElementById('adminPanelBody');
+  if(!body) return;
+
+  const p = pendingCounts();
+  document.getElementById('cntCuti').textContent = p.cuti;
+  document.getElementById('cntKuning').textContent = p.kuning;
+  document.getElementById('cntSwap').textContent = p.swap;
+  document.getElementById('cntCuti').classList.toggle('zero', p.cuti===0);
+  document.getElementById('cntKuning').classList.toggle('zero', p.kuning===0);
+  document.getElementById('cntSwap').classList.toggle('zero', p.swap===0);
+
+  renderAdminNotifBanner();
+
+  if(adminTab==='setup')        renderAdminSetup(body);
+  else if(adminTab==='kuningwindow') renderAdminKuningWindow(body);
+  else if(adminTab==='cuti')    renderAdminCuti(body);
+  else if(adminTab==='kuning')  renderAdminKuning(body);
+  else if(adminTab==='swap')    renderAdminSwap(body);
+  else if(adminTab==='lock')    renderAdminLock(body);
+  else if(adminTab==='print')   renderAdminPrint(body);
+}
+
+function renderAdminNotifBanner(){
+  const box = document.getElementById('adminNotifBanner');
+  if(!box) return;
+  const p = pendingCounts();
+  const total = p.cuti + p.kuning + p.swap;
+  if(total===0){ box.innerHTML = ''; return; }
+  const parts = [];
+  if(p.cuti)   parts.push(`<button class="ghost" onclick="gotoAdminTab('cuti')">${p.cuti} cuti</button>`);
+  if(p.kuning) parts.push(`<button class="ghost" onclick="gotoAdminTab('kuning')">${p.kuning} kuning</button>`);
+  if(p.swap)   parts.push(`<button class="ghost" onclick="gotoAdminTab('swap')">${p.swap} tukar dinas</button>`);
+  box.innerHTML = `<div class="admin-notif">
+    <div class="ni-icon">${ICON.bell}</div>
+    <div class="ni-text">
+      <b>Ada ${total} pengajuan menunggu persetujuan Anda</b>
+      <span>Klik salah satu tombol untuk langsung ke halaman persetujuan.</span>
+    </div>
+    <div class="ni-actions">
+      ${parts.join('')}
+      <button onclick="gotoAdminTab('cuti')" style="background:#7A4E0D;">Proses sekarang</button>
+    </div>
+  </div>`;
+}
+function gotoAdminTab(tab){
+  adminTab = tab;
+  document.querySelectorAll('.admin-tab').forEach(t=> t.classList.toggle('active', t.dataset.atab===tab));
+  renderAdminPanel();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ================= TAB: URUTAN ANTRIAN ================= */
+function renderAdminSetup(body){
+  body.innerHTML = `
+    ${adminPanelHead(ICON.users, 'Urutan antrian & kuota personel',
+      'Atur nomor urut, kuota kuning basis, dan sisa cuti tahunan. Perubahan berlaku setelah jadwal digenerate ulang.')}
+    <div class="admin-panel-body">
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card soft">
+            <div class="admin-card-title"><span class="num">i</span> Catatan aturan</div>
+            <div class="note" style="margin:0">
+              Nomor 1 &amp; 2 jadi PS pertama, nomor 3 &amp; 4 jadi M pertama di tanggal 1. Bulan berikutnya melanjutkan dari posisi antrian akhir bulan sebelumnya.<br><br>
+              <b>Kuota kuning</b> = basis per bulan. Kalau bulan lalu habis dipakai penuh, bulan ini turun ke ±70% (min ${KUNING_MIN_QUOTA}); kembali ke basis begitu ada bulan yang tidak habis dipakai.<br><br>
+              <b>Sisa cuti</b> dihitung per tahun kalender (ganti tahun di header untuk tahun lain).
+            </div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card" style="padding:0;">
+            <div class="admin-card-title" style="padding:18px 18px 0; margin-bottom:12px;">
+              <span class="num">${personnel.length}</span> Data personel
+              <span class="sub">Urutan &amp; kuota</span>
+            </div>
+            <div class="tablewrap">
+              <table class="setup" id="tblPersonel"></table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  const tbl = document.getElementById('tblPersonel');
+  tbl.innerHTML = `<thead><tr>
+      <th style="width:34px">#</th>
+      <th>Nama</th>
+      <th style="width:100px">Urutan</th>
+      <th style="width:120px">Kuota kuning</th>
+      <th style="width:110px">Sisa cuti ${viewY}</th>
+    </tr></thead><tbody>` +
+    personnel.map(p=>`<tr>
+      <td style="color:var(--ink-soft); font-family:var(--mono);">${p.id+1}</td>
+      <td>${p.name}</td>
+      <td><input type="number" min="1" max="${personnel.length}" value="${p.rank}" onchange="personnel[${p.id}].rank=parseInt(this.value)||${p.rank}; persistPersonnelField(${p.id},'rank',personnel[${p.id}].rank);"></td>
+      <td><input type="number" min="0" max="31" value="${p.kuningQuota}" onchange="personnel[${p.id}].kuningQuota=parseInt(this.value)||0; persistPersonnelField(${p.id},'kuningQuota',personnel[${p.id}].kuningQuota);"></td>
+      <td><input type="number" min="0" max="60" value="${cutiBalanceForYear(p.id, viewY)}" onchange="setCutiBalance(${p.id}, ${viewY}, this.value); refreshAdminOrModal();"></td>
+    </tr>`).join('') + `</tbody>`;
+}
+
+/* ================= TAB: JADWAL PROSES KUNING ================= */
+function renderAdminKuningWindow(body){
+  const open = isKuningWindowOpen();
+  body.innerHTML = `
+    ${adminPanelHead(ICON.clock, 'Jadwal proses pengajuan kuning',
+      'Atur kapan personel boleh mengajukan kuning. Di luar rentang ini, menu "Ajukan kuning" untuk personel otomatis terkunci.')}
+    <div class="admin-panel-body">
+      <div class="admin-grid equal">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Jendela pengajuan</div>
+            <div class="admin-info">${ICON.info}<div>Tanggal di bawah dihitung berdasarkan <b>tanggal hari ini</b> (${realToday().d} ${monthNames[realToday().m-1]}), bukan bulan yang sedang dibuka di kalender.</div></div>
+            <div class="field-row">
+              <div class="formrow"><label>Dibuka tanggal</label><input type="number" min="1" max="31" value="${kuningWindow.start}" onchange="kuningWindow.start=parseInt(this.value)||1; renderAdminPanel(); updateNavBadges(); persistSettings();"></div>
+              <div class="formrow"><label>Ditutup tanggal</label><input type="number" min="1" max="31" value="${kuningWindow.end}" onchange="kuningWindow.end=parseInt(this.value)||1; renderAdminPanel(); updateNavBadges(); persistSettings();"></div>
+            </div>
+            <div class="note" style="margin-top:4px">Kalau rentang melewati akhir bulan (mis. buka tgl 28, tutup tgl 5), sistem otomatis memperlakukan rentang membungkus bulan.</div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Catatan proses (tidak mengunci)</div>
+            <div class="field-row">
+              <div class="formrow"><label>Draft dicetak ke atasan</label><input type="number" min="1" max="31" value="${kuningWindow.draftDay}" onchange="kuningWindow.draftDay=parseInt(this.value)||1; persistSettings();"></div>
+              <div class="formrow"><label>Jadwal diedarkan tgl</label><input type="number" min="1" max="31" value="${kuningWindow.distributeDay}" onchange="kuningWindow.distributeDay=parseInt(this.value)||1; persistSettings();"></div>
+            </div>
+            <div class="note" style="margin-top:4px">Tanggal draft &amp; edar hanya sebagai pengingat jadwal kerja, tidak mengunci fitur apa pun.</div>
+          </div>
+
+          <div class="admin-card soft">
+            <div class="admin-card-title"><span class="num">!</span> Status saat ini</div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:${open?'var(--green-pale)':'var(--amber-pale)'};color:${open?'var(--green)':'#7A4E0D'};">
+                ${open ? ICON.check : ICON.lock}
+              </div>
+              <div>
+                <div style="font-weight:700; font-size:14px; color:${open?'var(--green)':'#7A4E0D'};">${open?'Pengajuan kuning DIBUKA':'Pengajuan kuning DITUTUP'}</div>
+                <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${open ? 'Personel bisa mengajukan kuning sekarang.' : `Personel tidak bisa mengajukan. Dibuka lagi ${nextKuningOpenLabel()}.`}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ================= TAB: PERSETUJUAN CUTI ================= */
+function renderAdminCuti(body){
+  const pending = cutiList.filter(c=>c.status==='pending');
+  const approved = cutiList.filter(c=>c.status==='approved');
+  const rejected = cutiList.filter(c=>c.status==='rejected');
+  const totalHari = approved.reduce((s,c)=> s + (c.end-c.start+1), 0);
+
+  body.innerHTML = `
+    ${adminPanelHead(ICON.cuti, 'Persetujuan cuti',
+      'Setujui atau tolak pengajuan cuti. Perubahan otomatis memperbarui jadwal bulan terkait dan bulan sesudahnya.')}
+    <div class="admin-panel-body">
+      <div class="admin-stats">
+        <div class="admin-stat warn"><div class="lbl">Menunggu</div><div class="val">${pending.length}</div></div>
+        <div class="admin-stat ok"><div class="lbl">Disetujui</div><div class="val">${approved.length}</div></div>
+        <div class="admin-stat bad"><div class="lbl">Ditolak</div><div class="val">${rejected.length}</div></div>
+        <div class="admin-stat"><div class="lbl">Total hari (acc)</div><div class="val">${totalHari}</div></div>
+      </div>
+
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Tambah cuti (langsung disetujui)</div>
+            <div id="adminCutiForm"></div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Daftar pengajuan
+              <span class="sub">${cutiList.length} total</span>
+            </div>
+            <div class="reqlist" id="adminCutiList"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  renderRequestPanel(document.getElementById('adminCutiForm'), 'cuti', 'admin');
+  const list = cutiList.slice().sort((a,b)=> b.id - a.id);
+  document.getElementById('adminCutiList').innerHTML = list.length ? list.map(item=>{
+    const p = personnel[item.personnelId];
+    let actions = '';
+    if(item.status==='pending'){
+      actions = `<div class="actions">
+        <button class="small ok-btn" onclick="setStatus('cuti',${item.id},'approved')">Setuju</button>
+        <button class="small reject-btn" onclick="setStatus('cuti',${item.id},'rejected')">Tolak</button>
+      </div>`;
+    } else {
+      actions = `<div class="actions">
+        <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
+        <button class="x" onclick="removeReq('cuti',${item.id})" aria-label="Hapus">×</button>
+      </div>`;
+    }
+    return `<div class="reqrow ${item.status}">
+      <span><span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}${item.reason?' · '+item.reason:''}</span></span>
+      ${actions}
+    </div>`;
+  }).join('') : `<div class="admin-empty">Belum ada pengajuan cuti.<br><b>Kotak masuk kosong.</b></div>`;
+}
+
+/* ================= TAB: PERSETUJUAN KUNING ================= */
+function renderAdminKuning(body){
+  const pending = kuningList.filter(c=>c.status==='pending');
+  const approved = kuningList.filter(c=>c.status==='approved');
+  const rejected = kuningList.filter(c=>c.status==='rejected');
+  const totalHari = approved.reduce((s,c)=> s + (c.end-c.start+1), 0);
+  const open = isKuningWindowOpen();
+
+  body.innerHTML = `
+    ${adminPanelHead(ICON.kuning, 'Persetujuan kuning',
+      'Kelola pengajuan kuning personel. Admin tetap bisa menambahkan kuning meskipun di luar jendela pengajuan.')}
+    <div class="admin-panel-body">
+      <div class="admin-stats">
+        <div class="admin-stat warn"><div class="lbl">Menunggu</div><div class="val">${pending.length}</div></div>
+        <div class="admin-stat ok"><div class="lbl">Disetujui</div><div class="val">${approved.length}</div></div>
+        <div class="admin-stat bad"><div class="lbl">Ditolak</div><div class="val">${rejected.length}</div></div>
+        <div class="admin-stat"><div class="lbl">Total hari (acc)</div><div class="val">${totalHari}</div></div>
+      </div>
+
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Tambah kuning (langsung disetujui)</div>
+            ${!open ? `<div class="admin-info" style="background:var(--amber-pale); color:#6B4308;">${ICON.clock}<div>Di luar jendela pengajuan (tgl ${kuningWindow.start}–${kuningWindow.end}). Personel tidak bisa mengajukan, tapi admin tetap bisa menambahkan.</div></div>` : ''}
+            <div id="adminKuningForm"></div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Daftar pengajuan
+              <span class="sub">${kuningList.length} total</span>
+            </div>
+            <div class="reqlist" id="adminKuningList"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  renderRequestPanel(document.getElementById('adminKuningForm'), 'kuning', 'admin');
+  const list = kuningList.slice().sort((a,b)=> b.id - a.id);
+  document.getElementById('adminKuningList').innerHTML = list.length ? list.map(item=>{
+    const p = personnel[item.personnelId];
+    let actions = '';
+    if(item.status==='pending'){
+      actions = `<div class="actions">
+        <button class="small ok-btn" onclick="setStatus('kuning',${item.id},'approved')">Setuju</button>
+        <button class="small reject-btn" onclick="setStatus('kuning',${item.id},'rejected')">Tolak</button>
+      </div>`;
+    } else {
+      actions = `<div class="actions">
+        <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
+        <button class="x" onclick="removeReq('kuning',${item.id})" aria-label="Hapus">×</button>
+      </div>`;
+    }
+    return `<div class="reqrow ${item.status}">
+      <span><span class="who">${p.name}</span><span class="meta">${fmtRange(item)} · ${monthTag(item.month,item.year)}</span></span>
+      ${actions}
+    </div>`;
+  }).join('') : `<div class="admin-empty">Belum ada pengajuan kuning.<br><b>Kotak masuk kosong.</b></div>`;
+}
+
+/* ================= TAB: PERSETUJUAN TUKAR DINAS ================= */
+function renderAdminSwap(body){
+  const pending = swapList.filter(c=>c.status==='pending');
+  const approved = swapList.filter(c=>c.status==='approved');
+  const rejected = swapList.filter(c=>c.status==='rejected');
+
+  body.innerHTML = `
+    ${adminPanelHead(ICON.swap, 'Persetujuan tukar dinas',
+      'Sistem hanya merekomendasikan personel yang libur penuh (Libur-2). Libur-1 tidak pernah direkomendasikan.')}
+    <div class="admin-panel-body">
+      <div class="admin-stats">
+        <div class="admin-stat warn"><div class="lbl">Menunggu</div><div class="val">${pending.length}</div></div>
+        <div class="admin-stat ok"><div class="lbl">Disetujui</div><div class="val">${approved.length}</div></div>
+        <div class="admin-stat bad"><div class="lbl">Ditolak</div><div class="val">${rejected.length}</div></div>
+      </div>
+
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Ajukan tukar dinas (langsung disetujui)</div>
+            <div id="adminSwapForm"></div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Daftar pengajuan
+              <span class="sub">${swapList.length} total</span>
+            </div>
+            <div class="reqlist" id="adminSwapList"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const rt = realToday();
+  const sched = schedules[skey(rt.y, rt.m)];
+  const from = rt.d+1, to = sched ? sched.days : 0;
+  const canForm = sched && from<=to;
+
+  if(canForm){
+    const mount = document.createElement('div');
+    renderSwapPanel(mount);
+    const formCard = mount.querySelector('.card');
+    document.getElementById('adminSwapForm').innerHTML = formCard ? formCard.outerHTML : mount.innerHTML;
+    wireSwapForm(sched, from, to);
+  } else {
+    document.getElementById('adminSwapForm').innerHTML = `<div class="admin-empty">Tukar dinas hanya berlaku untuk sisa bulan berjalan (mulai besok). Saat ini tidak ada sisa hari atau jadwal bulan ini belum dibuat.</div>`;
+  }
+
+  const list = swapList.slice().sort((a,b)=> b.id - a.id);
+  document.getElementById('adminSwapList').innerHTML = list.length ? list.map(item=>{
+    const req = personnel[item.requesterId], partner = personnel[item.partnerId];
+    let actions = '';
+    if(item.status==='pending'){
+      actions = `<div class="actions">
+        <button class="small ok-btn" onclick="setStatus('swap',${item.id},'approved')">Setuju</button>
+        <button class="small reject-btn" onclick="setStatus('swap',${item.id},'rejected')">Tolak</button>
+      </div>`;
+    } else {
+      actions = `<div class="actions">
+        <span class="badge ${item.status}">${item.status==='approved'?'Disetujui':'Ditolak'}</span>
+        <button class="x" onclick="removeReq('swap',${item.id})" aria-label="Hapus">×</button>
+      </div>`;
+    }
+    return `<div class="reqrow ${item.status}">
+      <span><span class="who">${req.name} → ${partner.name}</span><span class="meta">Tgl ${item.date} · ${item.slot} · ${monthTag(item.month,item.year)}${item.reason?' · '+item.reason:''}</span></span>
+      ${actions}
+    </div>`;
+  }).join('') : `<div class="admin-empty">Belum ada pengajuan tukar dinas.<br><b>Kotak masuk kosong.</b></div>`;
+}
+
+/* ================= TAB: LOCK ADMIN ================= */
+function renderAdminLock(body){
+  body.innerHTML = `
+    ${adminPanelHead(ICON.lock, 'Lock admin',
+      'Kunci slot PS/M untuk personel tertentu di tanggal tertentu. Maksimal 2 lock per slot per tanggal.')}
+    <div class="admin-panel-body">
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Tambah lock</div>
+            <div class="formrow"><label>Personel</label><select id="lockPersonel">${personnelOptions()}</select></div>
+            <div class="formrow"><label>Tanggal</label><input type="date" id="lockDate"></div>
+            <div class="formrow"><label>Slot</label><select id="lockSlot"><option value="PS">PS (Pagi Siang)</option><option value="M">M (Malam)</option></select></div>
+            <div class="formrow"><label>Alasan</label><input type="text" id="lockReason" placeholder="mis. diminta Kabag"></div>
+            <div id="lockWarn" class="warn"></div>
+            <button class="submit" id="btnAddLock">Kunci jadwal</button>
+            <div class="note">Tanggal mengikuti bulan yang sedang dibuka (${monthNames[viewM-1]} ${viewY}).</div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Daftar lock
+              <span class="sub">${lockedList.length} total</span>
+            </div>
+            <div class="reqlist" id="adminLockList"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  applyDateBounds(document.getElementById('lockDate'));
+  document.getElementById('btnAddLock').addEventListener('click', addLock);
+  renderAdminLockList();
+}
+function renderAdminLockList(){
+  const box = document.getElementById('adminLockList');
+  if(!box) return;
+  const list = lockedList.slice().sort((a,b)=> a.month-b.month || a.date-b.date);
+  box.innerHTML = list.length ? list.map(l=>{
+    const p = personnel[l.personnelId];
+    return `<div class="reqrow approved">
+      <span><span class="who">${p.name}</span><span class="meta">Tgl ${l.date} · ${l.slot} · ${monthTag(l.month,l.year)}${l.reason?' · '+l.reason:''}</span></span>
+      <button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>
+    </div>`;
+  }).join('') : `<div class="admin-empty">Belum ada lock admin.</div>`;
+}
+
+/* ================= TAB: CETAK JADWAL ================= */
+function renderAdminPrint(body){
+  const monthsWithSched = [];
+  Object.keys(schedules).forEach(k=>{
+    const [y,m] = k.split('-').map(Number);
+    monthsWithSched.push({y, m});
+  });
+  monthsWithSched.sort((a,b)=> a.y===b.y ? a.m-b.m : a.y-b.y);
+
+  const listHtml = monthsWithSched.length
+    ? monthsWithSched.map(x=>`<button class="print-item" onclick="printSchedule(${x.y}, ${x.m})">
+        <div class="pi-icon">${ICON.print}</div>
+        <div class="pi-text">
+          <div class="pi-title">${monthNames[x.m-1]} ${x.y}</div>
+          <div class="pi-sub">${schedules[skey(x.y,x.m)].days} hari · ${personnel.length} personel</div>
+        </div>
+        <span class="pi-badge">Cetak</span>
+      </button>`).join('')
+    : `<div class="admin-empty">Belum ada jadwal yang digenerate.<br><b>Kembali ke halaman jadwal lalu klik "Generate jadwal".</b></div>`;
+
+  body.innerHTML = `
+    ${adminPanelHead(ICON.print, 'Cetak jadwal bulanan',
+      'Cetak jadwal bulan yang sudah digenerate. Format sudah dioptimalkan untuk A4 landscape.')}
+    <div class="admin-panel-body">
+      <div class="admin-grid">
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">1</span> Cetak bulan tertentu</div>
+            <div class="field-row">
+              <div class="formrow"><label>Bulan</label>
+                <select id="printMonth">${monthNames.map((n,i)=>`<option value="${i+1}" ${i+1===viewM?'selected':''}>${n}</option>`).join('')}</select>
+              </div>
+              <div class="formrow"><label>Tahun</label>
+                <select id="printYear">${[rtNow.y-1, rtNow.y, rtNow.y+1, rtNow.y+2].map(y=>`<option value="${y}" ${y===viewY?'selected':''}>${y}</option>`).join('')}</select>
+              </div>
+            </div>
+            <button class="submit" id="btnPrintNow">${ICON.print} Cetak tampilan biasa</button>
+            <div class="admin-info" style="margin-top:14px;">${ICON.info}<div>Tips: di dialog cetak pilih <b>Landscape</b> dan aktifkan <b>Background graphics</b> agar warna slot PS/M/Cuti/Kuning tercetak dengan benar.</div></div>
+          </div>
+
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">2</span> Cetak format resmi (untuk atasan)</div>
+            <div class="field-row">
+              <div class="formrow"><label>Lampiran</label><input type="text" id="fpLampiran" value="${printMeta.lampiran}" placeholder="Lampiran Surat II"></div>
+              <div class="formrow"><label>Nomor surat</label><input type="text" id="fpNomor" value="${printMeta.nomor}" placeholder="e.B/DB.00.01/059/DDK/VIII/2026"></div>
+            </div>
+            <div class="field-row">
+              <div class="formrow"><label>Tanggal surat</label><input type="date" id="fpTanggal" value="${printMeta.tanggal}"></div>
+              <div class="formrow"><label>Tanggal merah tambahan</label><input type="text" id="fpHolidays" value="${extraHolidays[skey(viewY,viewM)] || ''}" placeholder="mis. 1,17 (selain Sabtu/Minggu)"></div>
+            </div>
+            <button class="submit" id="btnPrintFormal">${ICON.print} Cetak format resmi</button>
+            <div class="admin-info" style="margin-top:14px;">${ICON.info}<div>Sabtu &amp; Minggu otomatis ditandai <b>Tanggal Merah</b> (abu-abu). Tambahkan tanggal libur nasional lain di kolom di atas, dipisah koma. Cuti (disetujui) selalu tercetak merah. Terbuka di tab baru, siap dicetak/disimpan sebagai PDF.</div></div>
+          </div>
+        </div>
+        <div class="admin-col">
+          <div class="admin-card">
+            <div class="admin-card-title"><span class="num">3</span> Jadwal tersedia
+              <span class="sub">${monthsWithSched.length} bulan</span>
+            </div>
+            <div class="print-list">${listHtml}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('btnPrintNow').addEventListener('click', ()=>{
+    const m = parseInt(document.getElementById('printMonth').value);
+    const y = parseInt(document.getElementById('printYear').value);
+    printSchedule(y, m);
+  });
+  document.getElementById('btnPrintFormal').addEventListener('click', ()=>{
+    const m = parseInt(document.getElementById('printMonth').value);
+    const y = parseInt(document.getElementById('printYear').value);
+    printMeta.lampiran = document.getElementById('fpLampiran').value.trim() || 'Lampiran Surat';
+    printMeta.nomor = document.getElementById('fpNomor').value.trim();
+    printMeta.tanggal = document.getElementById('fpTanggal').value;
+    extraHolidays[skey(y,m)] = document.getElementById('fpHolidays').value.trim();
+    persistSettings();
+    persistExtraHoliday(y, m, extraHolidays[skey(y,m)]);
+    openFormalPrint(y, m);
+  });
+}
+function isTanggalMerah(y, m, day){
+  const dow = new Date(y, m-1, day).getDay(); // 0=Minggu, 6=Sabtu
+  if(dow===0 || dow===6) return true;
+  const raw = extraHolidays[skey(y,m)] || '';
+  const list = raw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
+  return list.includes(day);
+}
+function formatIndoDate(dateStr){
+  if(!dateStr) return '';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  if(!y||!m||!d) return dateStr;
+  return `${d} ${monthNames[m-1]} ${y}`;
+}
+function buildFormalPrintHtml(y, m){
+  const sched = schedules[skey(y,m)];
+  const days = sched.days;
+  let headCells = '';
+  for(let d=1; d<=days; d++) headCells += `<th class="${isTanggalMerah(y,m,d)?'merah':''}">${d}</th>`;
+  const rows = personnel.map((p,idx)=>{
+    let cells = '';
+    for(let d=1; d<=days; d++){
+      const dayData = sched.calendar[d-1];
+      const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===idx && c.month===m && c.year===y && d>=c.start && d<=c.end);
+      const isPS = dayData.PS.includes(idx), isM = dayData.M.includes(idx);
+      const merah = isTanggalMerah(y,m,d);
+      let label = onCuti ? '-' : (isPS ? 'PS' : (isM ? 'M' : '-'));
+      const cls = onCuti ? 'cuti' : (merah ? 'merah' : '');
+      cells += `<td class="${cls}">${label}</td>`;
+    }
+    return `<tr><td class="no">${idx+1}</td><td class="nama">${p.name}</td>${cells}</tr>`;
+  }).join('');
+  const nomor = printMeta.nomor || '&nbsp;';
+  const tgl = formatIndoDate(printMeta.tanggal) || '&nbsp;';
+  const lamp = printMeta.lampiran || 'Lampiran Surat';
+  return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Jadwal Dinas ${monthNames[m-1]} ${y}</title>
+<style>
+  @page{ size:A4 landscape; margin:14mm; }
+  *{ box-sizing:border-box; }
+  body{ font-family:Arial, Helvetica, sans-serif; color:#000; margin:0; padding:16px 22px; }
+  .letterhead{ display:flex; justify-content:flex-end; margin-bottom:22px; }
+  .letterhead table{ border-collapse:collapse; font-size:13px; }
+  .letterhead td{ padding:1px 4px; vertical-align:top; white-space:nowrap; }
+  .letterhead td.lbl{ padding-right:14px; }
+  .title{ text-align:center; font-weight:bold; font-size:16px; line-height:1.45; margin-bottom:16px; }
+  table.jadwal{ border-collapse:collapse; width:100%; font-size:11px; }
+  table.jadwal th, table.jadwal td{ border:1px solid #000; padding:4px 6px; text-align:center; }
+  table.jadwal td.nama, table.jadwal th.nama{ text-align:left; white-space:nowrap; }
+  table.jadwal th.merah, table.jadwal td.merah{ background:#C9C9C9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.jadwal td.cuti{ background:#FF0000 !important; color:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .keterangan{ margin-top:18px; font-size:13px; }
+  .keterangan .judul{ font-weight:bold; margin-bottom:8px; }
+  .ket-row{ display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+  .ket-label{ width:26px; display:inline-block; font-weight:bold; }
+  .swatch{ width:28px; height:16px; display:inline-block; border:1px solid #888; vertical-align:middle; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .swatch.merah{ background:#C9C9C9; }
+  .swatch.cuti{ background:#FF0000; }
+  @media print{ .noprint{ display:none !important; } }
+  .noprint{ position:fixed; top:10px; right:10px; }
+  .noprint button{ font-family:Arial; font-size:13px; padding:8px 14px; border-radius:6px; border:1px solid #999; background:#0E5C6E; color:#fff; cursor:pointer; }
+</style></head><body>
+  <div class="noprint"><button onclick="window.print()">🖨️ Cetak / Simpan PDF</button></div>
+  <div class="letterhead">
+    <table>
+      <tr><td colspan="3">${lamp}</td></tr>
+      <tr><td class="lbl">Nomor</td><td>:</td><td>${nomor}</td></tr>
+      <tr><td class="lbl">Tanggal</td><td>:</td><td>${tgl}</td></tr>
+    </table>
+  </div>
+  <div class="title">Jadwal Dinas Shift Pengelola Data dan Komputasi<br>Direktorat Data dan Komputasi<br>Bulan ${monthNames[m-1]} ${y}</div>
+  <table class="jadwal">
+    <thead>
+      <tr><th rowspan="2">No</th><th rowspan="2" class="nama">Nama</th><th colspan="${days}">Tanggal</th></tr>
+      <tr>${headCells}</tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="keterangan">
+    <div class="judul">Keterangan :</div>
+    <div class="ket-row"><span class="ket-label">PS</span><span>= Pagi (08.00 - 20.00 WIB)</span></div>
+    <div class="ket-row"><span class="ket-label">M</span><span>= Malam (20.00 - 08.00 WIB)</span></div>
+    <div class="ket-row"><span class="ket-label">-</span><span>= Lepas Dinas/Libur</span></div>
+    <div class="ket-row"><span class="swatch merah"></span><span>= Tanggal Merah</span></div>
+    <div class="ket-row"><span class="swatch cuti"></span><span>= Cuti</span></div>
+  </div>
+</body></html>`;
+}
+function openFormalPrint(y, m){
+  if(!schedules[skey(y,m)]){ toast(`Jadwal ${monthNames[m-1]} ${y} belum dibuat`); return; }
+  const html = buildFormalPrintHtml(y, m);
+  const w = window.open('', '_blank');
+  if(!w){ toast('Popup diblokir browser — izinkan popup untuk situs ini agar bisa mencetak.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+function printSchedule(y, m){
+  if(!schedules[skey(y,m)]){ toast(`Jadwal ${monthNames[m-1]} ${y} belum dibuat`); return; }
+  viewY = y; viewM = m;
+  if(selYear.value != y) selYear.value = y;
+  hideAdminPage();
+  renderMonthTabs();
+  renderScheduleArea();
+  setTimeout(()=>{
+    toast('Menyiapkan cetak… pilih "Landscape" di dialog');
+    window.print();
+  }, 180);
+}
+
+/* =====================================================================
+   INIT
+   ===================================================================== */
+function renderAll(){
+  updateUserChip();
+  updateNavHighlight();
+  updateGenerateButton();
+  renderMonthTabs();
+  renderScheduleArea();
+  updateNavBadges();
+  if(activePanel) renderModal();
+  if(document.getElementById('adminPage').style.display==='block') renderAdminPanel();
+}
+
+renderLoginRoles();
+updateLoginHint();
+document.getElementById('loginPin').disabled = true;
+
+(async function initApp(){
+  await loadFromSupabase();   // tarik data terbaru dari Supabase (kalau tersedia) sebelum render
+  renderLoginRoles();
+  updateLoginHint();
+  const savedRole = loadSession();
+  if(savedRole && (savedRole==='admin' || savedRole.startsWith('p'))){
+    enterApp(savedRole);
+  } else {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginScreen').setAttribute('aria-hidden','false');
+  }
+})();
+</script>
+</body>
+</html>
