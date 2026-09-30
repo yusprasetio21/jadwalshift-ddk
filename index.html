@@ -234,6 +234,9 @@
   .shift-opt.opt-ps.active{ border-color:#0A4552; background:#0E5C6E; color:#fff; }
   .shift-opt.opt-m.active{ border-color:#3B2E75; background:#5B4896; color:#fff; }
   .shift-opt.opt-off.active{ border-color:var(--ink-soft); background:#5A6B7E; color:#fff; }
+  .shift-opt.opt-cuti.active{ border-color:var(--red); background:var(--red); color:#fff; }
+  .shift-opt.opt-kuning.active{ border-color:#D8A61E; background:var(--kuning); color:var(--kuning-ink); }
+  .shift-opt.opt-lock.active{ border-color:var(--indigo); background:var(--indigo); color:#fff; }
   .warn-item{
     border-radius:8px; padding:9px 12px; font-size:12.5px; line-height:1.45;
     margin-bottom:6px; display:flex; gap:8px; align-items:flex-start;
@@ -3058,8 +3061,31 @@ function openManualEditModal(day, pid){
   const entry = sched.calendar[day-1] || {};
   const isPS = (entry.PS||[]).includes(pid);
   const isM = (entry.M||[]).includes(pid);
-  const initialShift = isPS ? 'PS' : (isM ? 'M' : 'OFF');
-  const isLocked = (isPS && (entry.lockedPS||[]).includes(pid)) || (isM && (entry.lockedM||[]).includes(pid));
+  const onCuti = cutiList.find(c=>c.status==='approved' && c.personnelId===pid && c.month===viewM && c.year===viewY && day>=c.start && day<=c.end);
+  const onKuning = kuningList.find(k=>k.status==='approved' && k.personnelId===pid && k.month===viewM && k.year===viewY && day>=k.start && day<=k.end);
+  const lockItem = lockedList.find(l=>l.personnelId===pid && l.date===day && l.month===viewM && l.year===viewY);
+
+  let initialMode = 'OFF';
+  let lockSlot = 'PS';
+  let lockReason = 'Permintaan Pimpinan / Bos suruh masuk';
+  let cutiReason = 'Cuti tahunan';
+  let kuningReason = 'Keinginan libur';
+
+  if(lockItem){
+    initialMode = 'LOCK';
+    lockSlot = lockItem.slot || (isM ? 'M' : 'PS');
+    lockReason = lockItem.reason || lockReason;
+  } else if(onCuti){
+    initialMode = 'CUTI';
+    cutiReason = onCuti.reason || cutiReason;
+  } else if(onKuning){
+    initialMode = 'KUNING';
+    kuningReason = onKuning.reason || kuningReason;
+  } else if(isPS){
+    initialMode = 'PS';
+  } else if(isM){
+    initialMode = 'M';
+  }
 
   manualEditState = {
     day,
@@ -3067,19 +3093,31 @@ function openManualEditModal(day, pid){
     sched,
     year: viewY,
     month: viewM,
-    selectedShift: initialShift,
-    isLocked: !!isLocked
+    selectedMode: initialMode,
+    lockSlot,
+    lockReason,
+    cutiReason,
+    kuningReason
   };
   openModal('edit_shift');
 }
 
 function renderManualEditPanel(area){
   if(!manualEditState) return;
-  const { day, pid, sched, year, month, selectedShift, isLocked } = manualEditState;
+  const { day, pid, sched, year, month, selectedMode, lockSlot, lockReason, cutiReason, kuningReason } = manualEditState;
   const p = getPerson(pid);
   const dow = new Date(year, month - 1, day).getDay();
   const dayNamesFull = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   const dayStr = `${dayNamesFull[dow]}, ${day} ${monthNames[month-1]} ${year}`;
+
+  const modeLabels = {
+    'OFF': 'Libur / Antre (–)',
+    'PS': 'Pagi Siang (PS)',
+    'M': 'Malam (M)',
+    'CUTI': 'Cuti Resmi (C)',
+    'KUNING': 'Kuning Disetujui (K)',
+    'LOCK': `🔒 Lock Khusus (${lockSlot})`
+  };
 
   document.getElementById('mSub').textContent = `${p.name} · ${dayStr}`;
 
@@ -3092,23 +3130,53 @@ function renderManualEditPanel(area){
         </div>
         <div style="text-align:right;">
           <div style="font-size:11px; color:var(--ink-soft); text-transform:uppercase; font-weight:600;">Status Terpilih</div>
-          <div id="manualCurrentBadge" style="font-family:var(--mono); font-weight:700; font-size:14px; color:var(--navy);">${selectedShift === 'OFF' ? 'Libur / Antre (–)' : selectedShift}</div>
+          <div id="manualCurrentBadge" style="font-family:var(--mono); font-weight:700; font-size:14px; color:var(--navy);">${modeLabels[selectedMode] || selectedMode}</div>
         </div>
       </div>
 
       <div class="formrow">
-        <label>Pilih Jenis Dinas / Shift</label>
-        <div class="shift-picker">
-          <button type="button" class="shift-opt opt-off ${selectedShift==='OFF'?'active':''}" data-shift="OFF">Libur / Antre (–)</button>
-          <button type="button" class="shift-opt opt-ps ${selectedShift==='PS'?'active':''}" data-shift="PS">Pagi Siang (PS)</button>
-          <button type="button" class="shift-opt opt-m ${selectedShift==='M'?'active':''}" data-shift="M">Malam (M)</button>
+        <label style="font-weight:700;">Pilih Status / Jenis Shift:</label>
+        <div class="shift-picker" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:8px 0;">
+          <button type="button" class="shift-opt opt-off ${selectedMode==='OFF'?'active':''}" data-mode="OFF">Libur (–)</button>
+          <button type="button" class="shift-opt opt-ps ${selectedMode==='PS'?'active':''}" data-mode="PS">Pagi Siang (PS)</button>
+          <button type="button" class="shift-opt opt-m ${selectedMode==='M'?'active':''}" data-mode="M">Malam (M)</button>
+          <button type="button" class="shift-opt opt-cuti ${selectedMode==='CUTI'?'active':''}" data-mode="CUTI">🏖 Cuti (C)</button>
+          <button type="button" class="shift-opt opt-kuning ${selectedMode==='KUNING'?'active':''}" data-mode="KUNING">⭐ Kuning (K)</button>
+          <button type="button" class="shift-opt opt-lock ${selectedMode==='LOCK'?'active':''}" data-mode="LOCK">🔒 Lock Khusus</button>
         </div>
       </div>
 
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; margin:14px 0; cursor:pointer;">
-        <input type="checkbox" id="chkManualLock" ${isLocked ? 'checked' : ''}>
-        <span>Kunci shift ini (Admin Lock agar tidak tergeser auto-generate)</span>
-      </label>
+      <!-- Detail Box untuk Lock Khusus -->
+      <div id="lockConfigBox" style="${selectedMode==='LOCK'?'':'display:none;'} background:#F0F4F8; border:1px solid #C8D8E8; border-radius:8px; padding:12px; margin:10px 0;">
+        <div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">🔒 Pengaturan Lock Khusus (Permintaan Masuk)</div>
+        <div class="formrow" style="margin-bottom:8px;">
+          <label style="font-size:12px; font-weight:600;">Pilih Slot Dinas:</label>
+          <div style="display:flex; gap:16px; margin-top:3px;">
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:600;">
+              <input type="radio" name="radLockSlot" value="PS" ${lockSlot==='PS'?'checked':''}> PS (Pagi Siang)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:600;">
+              <input type="radio" name="radLockSlot" value="M" ${lockSlot==='M'?'checked':''}> M (Malam)
+            </label>
+          </div>
+        </div>
+        <div class="formrow" style="margin-bottom:0;">
+          <label style="font-size:12px; font-weight:600;">Alasan Lock Khusus:</label>
+          <input type="text" id="txtLockReason" value="${esc(lockReason)}" placeholder="mis. Permintaan pimpinan / Bos suruh masuk">
+        </div>
+      </div>
+
+      <!-- Detail Box untuk Cuti -->
+      <div id="cutiConfigBox" style="${selectedMode==='CUTI'?'':'display:none;'} background:#FDF2F1; border:1px solid #F5C6C2; border-radius:8px; padding:12px; margin:10px 0;">
+        <div style="font-size:12.5px; font-weight:700; color:var(--red); margin-bottom:6px;">🏖 Alasan Cuti</div>
+        <input type="text" id="txtCutiReason" value="${esc(cutiReason)}" placeholder="mis. Cuti tahunan / keperluan keluarga">
+      </div>
+
+      <!-- Detail Box untuk Kuning -->
+      <div id="kuningConfigBox" style="${selectedMode==='KUNING'?'':'display:none;'} background:#FEF9E7; border:1px solid #FCE599; border-radius:8px; padding:12px; margin:10px 0;">
+        <div style="font-size:12.5px; font-weight:700; color:#7D5A06; margin-bottom:6px;">⭐ Alasan Pengajuan Kuning (Keinginan Libur)</div>
+        <input type="text" id="txtKuningReason" value="${esc(kuningReason)}" placeholder="mis. Keinginan libur tanggal ini">
+      </div>
 
       <div class="sect" style="margin:16px 0 8px;">Pemeriksaan Kaedah Rotasi &amp; Kuota (Live)</div>
       <div id="manualWarnBox"></div>
@@ -3120,28 +3188,57 @@ function renderManualEditPanel(area){
     </div>
   `;
 
+  // Attach button mode switches
   area.querySelectorAll('.shift-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       area.querySelectorAll('.shift-opt').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      manualEditState.selectedShift = btn.dataset.shift;
+      manualEditState.selectedMode = btn.dataset.mode;
+
+      const lockBox = document.getElementById('lockConfigBox');
+      const cutiBox = document.getElementById('cutiConfigBox');
+      const kuningBox = document.getElementById('kuningConfigBox');
+
+      if(lockBox) lockBox.style.display = manualEditState.selectedMode === 'LOCK' ? 'block' : 'none';
+      if(cutiBox) cutiBox.style.display = manualEditState.selectedMode === 'CUTI' ? 'block' : 'none';
+      if(kuningBox) kuningBox.style.display = manualEditState.selectedMode === 'KUNING' ? 'block' : 'none';
+
       const badge = document.getElementById('manualCurrentBadge');
-      if(badge) badge.textContent = btn.dataset.shift === 'OFF' ? 'Libur / Antre (–)' : btn.dataset.shift;
+      if(badge) {
+        if(manualEditState.selectedMode === 'LOCK'){
+          badge.textContent = `🔒 Lock Khusus (${manualEditState.lockSlot})`;
+        } else {
+          badge.textContent = modeLabels[manualEditState.selectedMode] || manualEditState.selectedMode;
+        }
+      }
       updateManualWarnBox();
     });
   });
 
-  const chk = document.getElementById('chkManualLock');
-  if(chk){
-    chk.addEventListener('change', () => {
-      manualEditState.isLocked = chk.checked;
+  // Lock Slot radios
+  area.querySelectorAll('input[name="radLockSlot"]').forEach(rad => {
+    rad.addEventListener('change', () => {
+      manualEditState.lockSlot = rad.value;
+      const badge = document.getElementById('manualCurrentBadge');
+      if(badge && manualEditState.selectedMode === 'LOCK'){
+        badge.textContent = `🔒 Lock Khusus (${manualEditState.lockSlot})`;
+      }
+      updateManualWarnBox();
     });
-  }
+  });
+
+  // Reason inputs
+  const txtLock = document.getElementById('txtLockReason');
+  if(txtLock) txtLock.addEventListener('input', () => { manualEditState.lockReason = txtLock.value; });
+
+  const txtCuti = document.getElementById('txtCutiReason');
+  if(txtCuti) txtCuti.addEventListener('input', () => { manualEditState.cutiReason = txtCuti.value; });
+
+  const txtKuning = document.getElementById('txtKuningReason');
+  if(txtKuning) txtKuning.addEventListener('input', () => { manualEditState.kuningReason = txtKuning.value; });
 
   const btnSave = document.getElementById('btnSaveManualEdit');
-  if(btnSave){
-    btnSave.addEventListener('click', saveManualEdit);
-  }
+  if(btnSave) btnSave.addEventListener('click', saveManualEdit);
 
   updateManualWarnBox();
 }
@@ -3149,10 +3246,41 @@ function renderManualEditPanel(area){
 function updateManualWarnBox(){
   const box = document.getElementById('manualWarnBox');
   if(!box || !manualEditState) return;
-  const { day, pid, sched, year, month, selectedShift } = manualEditState;
-  const warnings = checkManualShiftWarnings(day, pid, selectedShift, sched, year, month);
+  const { day, pid, sched, year, month, selectedMode, lockSlot } = manualEditState;
 
-  if(!warnings.length){
+  let effectiveShift = 'OFF';
+  if(selectedMode === 'PS') effectiveShift = 'PS';
+  else if(selectedMode === 'M') effectiveShift = 'M';
+  else if(selectedMode === 'LOCK') effectiveShift = lockSlot;
+  else effectiveShift = 'OFF';
+
+  const warnings = checkManualShiftWarnings(day, pid, effectiveShift, sched, year, month);
+
+  // Filter out self cuti/kuning warnings jika sedang memilih cuti/kuning
+  const filtered = warnings.filter(w => {
+    if(selectedMode === 'CUTI' && w.text.includes('CUTI')) return false;
+    if(selectedMode === 'KUNING' && w.text.includes('KUNING')) return false;
+    return true;
+  });
+
+  if(selectedMode === 'LOCK'){
+    filtered.unshift({
+      level: 'info',
+      text: `🔒 Kunci Khusus (${lockSlot}): Slot ini akan dikunci permanen oleh Admin (tidak tergeser saat auto-generate).`
+    });
+  } else if(selectedMode === 'CUTI'){
+    filtered.unshift({
+      level: 'info',
+      text: `🏖 Status Cuti: Personel ditandai Cuti resmi pada tanggal ${day}. Jatah cuti tahunan akan berkurang 1 hari.`
+    });
+  } else if(selectedMode === 'KUNING'){
+    filtered.unshift({
+      level: 'info',
+      text: `⭐ Status Kuning: Personel ditandai Kuning (keinginan libur disetujui) pada tanggal ${day}.`
+    });
+  }
+
+  if(!filtered.length){
     box.innerHTML = `
       <div class="warn-item ok">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex:none;"><polyline points="20 6 9 17 4 12"/></svg>
@@ -3162,7 +3290,7 @@ function updateManualWarnBox(){
     return;
   }
 
-  box.innerHTML = warnings.map(w => {
+  box.innerHTML = filtered.map(w => {
     const icon = w.level === 'bad' ? '⛔' : (w.level === 'warn' ? '⚠' : 'ℹ');
     return `<div class="warn-item ${w.level}">
       <span style="font-size:14px; flex:none;">${icon}</span>
@@ -3173,9 +3301,20 @@ function updateManualWarnBox(){
 
 async function saveManualEdit(){
   if(!manualEditState) return;
-  const { day, pid, sched, year, month, selectedShift, isLocked } = manualEditState;
-  const warnings = checkManualShiftWarnings(day, pid, selectedShift, sched, year, month);
-  const bads = warnings.filter(w => w.level === 'bad');
+  const { day, pid, sched, year, month, selectedMode, lockSlot, lockReason, cutiReason, kuningReason } = manualEditState;
+
+  let effectiveShift = 'OFF';
+  if(selectedMode === 'PS') effectiveShift = 'PS';
+  else if(selectedMode === 'M') effectiveShift = 'M';
+  else if(selectedMode === 'LOCK') effectiveShift = lockSlot;
+
+  const warnings = checkManualShiftWarnings(day, pid, effectiveShift, sched, year, month);
+  const bads = warnings.filter(w => {
+    if(selectedMode === 'CUTI' && w.text.includes('CUTI')) return false;
+    if(selectedMode === 'KUNING' && w.text.includes('KUNING')) return false;
+    return w.level === 'bad';
+  });
+
   if(bads.length > 0){
     const msg = bads.map(b => '• ' + b.text).join('\n');
     const ok = confirm(`PERINGATAN KAEDAH KERAS:\n\nTerdapat potensi pelanggaran kaedah:\n${msg}\n\nApakah Anda sebagai Admin tetap ingin menyimpan perubahan ini (Diskresi Admin)?`);
@@ -3185,7 +3324,7 @@ async function saveManualEdit(){
   const dEntry = sched.calendar[day - 1];
   if(!dEntry) return;
 
-  // 1. Bersihkan pid dari dinas hari itu
+  // 1. Bersihkan status dinas lama hari itu
   dEntry.PS = (dEntry.PS || []).filter(id => id !== pid);
   dEntry.M = (dEntry.M || []).filter(id => id !== pid);
   dEntry.L1 = (dEntry.L1 || []).filter(id => id !== pid);
@@ -3193,7 +3332,7 @@ async function saveManualEdit(){
   dEntry.lockedPS = (dEntry.lockedPS || []).filter(id => id !== pid);
   dEntry.lockedM = (dEntry.lockedM || []).filter(id => id !== pid);
 
-  // Sync lockedList in memory and DB jika sebelumnya terkunci
+  // 2. Bersihkan lock lama jika ada
   const existingLockIdx = lockedList.findIndex(l => l.personnelId === pid && l.date === day && l.month === month && l.year === year);
   if(existingLockIdx >= 0){
     const lockId = lockedList[existingLockIdx].id;
@@ -3201,23 +3340,27 @@ async function saveManualEdit(){
     dbDelete('locked_slots', lockId);
   }
 
-  if(selectedShift === 'PS'){
+  // 3. Bersihkan cuti lama pada tanggal ini jika beralih ke mode selain cuti
+  const existingCutiIdx = cutiList.findIndex(c => c.personnelId === pid && c.month === month && c.year === year && day >= c.start && day <= c.end);
+  if(existingCutiIdx >= 0 && selectedMode !== 'CUTI'){
+    const cItem = cutiList[existingCutiIdx];
+    cutiList.splice(existingCutiIdx, 1);
+    dbDelete('cuti_requests', cItem.id);
+  }
+
+  // 4. Bersihkan kuning lama pada tanggal ini jika beralih ke mode selain kuning
+  const existingKuningIdx = kuningList.findIndex(k => k.personnelId === pid && k.month === month && k.year === year && day >= k.start && day <= k.end);
+  if(existingKuningIdx >= 0 && selectedMode !== 'KUNING'){
+    const kItem = kuningList[existingKuningIdx];
+    kuningList.splice(existingKuningIdx, 1);
+    dbDelete('kuning_requests', kItem.id);
+  }
+
+  // 5. Terapkan mode baru
+  if(selectedMode === 'PS'){
     dEntry.PS.push(pid);
-    if(isLocked){
-      dEntry.lockedPS.push(pid);
-      const row = { id: nextId++, personnelId: pid, date: day, slot: 'PS', reason: 'Admin manual lock', month, year };
-      lockedList.push(row);
-      dbInsert('locked_slots', { id: row.id, personnel_id: pid, date: day, slot: 'PS', reason: row.reason, month, year });
-    }
-  } else if(selectedShift === 'M'){
+  } else if(selectedMode === 'M'){
     dEntry.M.push(pid);
-    if(isLocked){
-      dEntry.lockedM.push(pid);
-      const row = { id: nextId++, personnelId: pid, date: day, slot: 'M', reason: 'Admin manual lock', month, year };
-      lockedList.push(row);
-      dbInsert('locked_slots', { id: row.id, personnel_id: pid, date: day, slot: 'M', reason: row.reason, month, year });
-    }
-    // Propagasi L1 ke besok dan L2 ke lusa jika masih di bulan berjalan
     if(day + 1 <= sched.days){
       const nextD = sched.calendar[day];
       if(!nextD.L1) nextD.L1 = [];
@@ -3230,6 +3373,43 @@ async function saveManualEdit(){
       if(!day2D.L2.includes(pid)) day2D.L2.push(pid);
       day2D.cells = buildDayCellsSnapshot(day + 2, day2D, month, year);
     }
+  } else if(selectedMode === 'CUTI'){
+    if(existingCutiIdx < 0){
+      const row = { id: nextId++, personnelId: pid, start: day, end: day, reason: cutiReason || 'Cuti tahunan', month, year, status: 'approved' };
+      cutiList.push(row);
+      dbInsert('cuti_requests', row);
+      const curBal = cutiBalanceForYear(pid, year);
+      setCutiBalance(pid, year, Math.max(0, curBal - 1));
+    }
+  } else if(selectedMode === 'KUNING'){
+    if(existingKuningIdx < 0){
+      const row = { id: nextId++, personnelId: pid, start: day, end: day, reason: kuningReason || 'Keinginan libur', month, year, status: 'approved' };
+      kuningList.push(row);
+      dbInsert('kuning_requests', row);
+    }
+  } else if(selectedMode === 'LOCK'){
+    if(lockSlot === 'PS'){
+      dEntry.PS.push(pid);
+      dEntry.lockedPS.push(pid);
+    } else {
+      dEntry.M.push(pid);
+      dEntry.lockedM.push(pid);
+      if(day + 1 <= sched.days){
+        const nextD = sched.calendar[day];
+        if(!nextD.L1) nextD.L1 = [];
+        if(!nextD.L1.includes(pid)) nextD.L1.push(pid);
+        nextD.cells = buildDayCellsSnapshot(day + 1, nextD, month, year);
+      }
+      if(day + 2 <= sched.days){
+        const day2D = sched.calendar[day + 1];
+        if(!day2D.L2) day2D.L2 = [];
+        if(!day2D.L2.includes(pid)) day2D.L2.push(pid);
+        day2D.cells = buildDayCellsSnapshot(day + 2, day2D, month, year);
+      }
+    }
+    const row = { id: nextId++, personnelId: pid, date: day, slot: lockSlot, reason: lockReason || 'Permintaan pimpinan', month, year };
+    lockedList.push(row);
+    dbInsert('locked_slots', row);
   }
 
   // Hitung ulang total dinas bulanan per personel
@@ -3253,7 +3433,9 @@ async function saveManualEdit(){
 
   closeModal();
   renderScheduleArea();
-  toast(`Dinas ${getPerson(pid).name} tanggal ${day} berhasil disimpan.`);
+  updateNavBadges();
+  if(document.getElementById('adminPage').style.display==='block') renderAdminPanel();
+  toast(`Jadwal ${getPerson(pid).name} tanggal ${day} berhasil diperbarui.`);
 }
 
 /* =====================================================================
