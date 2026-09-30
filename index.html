@@ -237,6 +237,94 @@
   .shift-opt.opt-cuti.active{ border-color:var(--red); background:var(--red); color:#fff; }
   .shift-opt.opt-kuning.active{ border-color:#D8A61E; background:var(--kuning); color:var(--kuning-ink); }
   .shift-opt.opt-lock.active{ border-color:var(--indigo); background:var(--indigo); color:#fff; }
+
+  /* Slot Pending Status */
+  td.slot-cuti-pending{
+    background-color:#FDF2F1 !important; color:var(--red) !important; font-weight:700; font-family:var(--mono);
+    border:1.5px dashed var(--red) !important;
+  }
+  td.slot-kuning-pending{
+    background-color:#FEF9E7 !important; color:#7D5A06 !important; font-weight:700; font-family:var(--mono);
+    border:1.5px dashed #C8990A !important;
+  }
+
+  /* User Clickable Cells & Row Highlighting */
+  table.cal td.user-cell-clickable{
+    cursor:pointer;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:rgba(14,92,110,.25);
+  }
+  table.cal td.user-cell-clickable:hover{
+    outline:2px solid var(--teal);
+    outline-offset:-2px;
+    filter:brightness(.95);
+    position:relative;
+    z-index:2;
+  }
+  table.cal td.user-cell-clickable:active{
+    background-color:#B2DFDB !important;
+  }
+  table.cal tr.my-user-row th.nama{
+    background:#E6F4EA !important;
+    color:#137333 !important;
+    font-weight:700 !important;
+    box-shadow:inset 3px 0 0 #137333;
+  }
+  table.cal tr.my-user-row td{
+    border-top:1.5px solid #A8DAB5 !important;
+    border-bottom:1.5px solid #A8DAB5 !important;
+  }
+
+  /* User Modal Option Cards */
+  .user-req-toggle{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin:10px 0 14px;
+  }
+  .user-opt-btn{
+    padding:16px 12px;
+    border-radius:12px;
+    border:2px solid var(--line);
+    background:#fff;
+    cursor:pointer;
+    text-align:center;
+    transition:all .18s ease;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    min-height:85px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .user-opt-btn:hover{
+    border-color:var(--navy);
+    background:#F8FAFC;
+  }
+  .user-opt-btn.active.opt-cuti{
+    border-color:var(--red);
+    background:#FDF2F1;
+    box-shadow:0 0 0 3px rgba(186,43,30,.15);
+  }
+  .user-opt-btn.active.opt-kuning{
+    border-color:var(--kuning-ink);
+    background:#FEF9E7;
+    box-shadow:0 0 0 3px rgba(125,90,6,.15);
+  }
+  .user-opt-btn .u-icon{
+    font-size:26px;
+    line-height:1;
+  }
+  .user-opt-btn .u-title{
+    font-size:14px;
+    font-weight:700;
+  }
+  .user-opt-btn .u-sub{
+    font-size:11px;
+    color:var(--ink-soft);
+  }
+
   .warn-item{
     border-radius:8px; padding:9px 12px; font-size:12.5px; line-height:1.45;
     margin-bottom:6px; display:flex; gap:8px; align-items:flex-start;
@@ -594,18 +682,57 @@
   }
 
   @media (max-width:880px){
-    .main{ padding-left:14px; padding-right:14px; }
-    nav.topnav{ padding:9px 14px; }
-    .monthbar{ padding:12px 14px 0; }
-    header{ padding:14px 16px; }
+    .main{ padding-left:12px; padding-right:12px; }
+    nav.topnav{ padding:9px 12px; }
+    .monthbar{ padding:10px 12px 0; }
+    header{ padding:12px 14px; }
+    .calwrap{ -webkit-overflow-scrolling:touch; }
     .modal-backdrop{ align-items:flex-end; padding:0; }
-    .modal{ border-radius:18px 18px 0 0; max-height:92%; }
-    .admin-shell{ padding:14px; }
+    .modal{
+      border-radius:22px 22px 0 0;
+      max-height:92vh;
+      width:100%;
+      box-shadow:0 -10px 40px rgba(0,0,0,0.32);
+      animation:bottomSheetUp .24s cubic-bezier(.2,.9,.3,1.1);
+    }
+    @keyframes bottomSheetUp{
+      from{ transform:translateY(100%); }
+      to{ transform:translateY(0); }
+    }
+    .modal-head{
+      padding:14px 18px;
+      position:relative;
+    }
+    .modal-head::before{
+      content:'';
+      position:absolute;
+      top:7px;
+      left:50%;
+      transform:translateX(-50%);
+      width:38px;
+      height:4px;
+      border-radius:99px;
+      background:rgba(255,255,255,0.4);
+    }
+    .modal-body{
+      padding:16px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+      -webkit-overflow-scrolling:touch;
+    }
+    .modal-body select, .modal-body input{
+      font-size:16px !important; /* Prevents auto-zoom on iOS Safari */
+    }
+    .admin-shell{ padding:12px; }
   }
   @media (max-width:520px){
     .login-roles{ grid-template-columns:1fr; }
     .userchip-text{ display:none; }
     .userchip-btn{ padding:4px; }
+    .user-req-toggle{ gap:8px; }
+    .user-opt-btn{ padding:12px 6px; min-height:75px; }
+    .user-opt-btn .u-icon{ font-size:22px; }
+    .user-opt-btn .u-title{ font-size:13px; }
+    .user-opt-btn .u-sub{ font-size:10px; }
+    .shift-picker{ grid-template-columns:repeat(2, 1fr); }
   }
   @media (prefers-reduced-motion:reduce){
     .modal, .modal-backdrop, .toast, .login-card{ transition:none; animation:none; }
@@ -646,7 +773,7 @@
 <header>
   <div>
     <h1>Portal Jadwal Shift — Pengelola Database BMKG</h1>
-    <div class="sub">2 orang PS + 2 orang M / hari · pola sama untuk semua: PS → M → Libur-1 → Libur-2 → antre lagi</div>
+    <div class="sub" id="headerSubText" style="display:none;">2 orang PS + 2 orang M / hari · pola sama untuk semua: PS → M → Libur-1 → Libur-2 → antre lagi</div>
   </div>
   <div class="headctl">
     <select id="selYear" aria-label="Tahun"></select>
@@ -1106,6 +1233,8 @@ function updateUserChip(){
   document.getElementById('userName').textContent = name;
   document.getElementById('userRole').textContent = roleLabel(currentRole);
   document.getElementById('userAvatar').textContent = isAdmin() ? 'AD' : initials(name);
+  const subEl = document.getElementById('headerSubText');
+  if(subEl) subEl.style.display = isAdmin() ? 'block' : 'none';
 }
 document.getElementById('userChipBtn').addEventListener('click', e=>{
   e.stopPropagation();
@@ -1281,7 +1410,8 @@ const PANEL_META = {
   kuning:     { icon:ICON.kuning,title:'Ajukan kuning' },
   swap:       { icon:ICON.swap,  title:'Tukar dinas' },
   lock:       { icon:ICON.lock,  title:'Lock admin' },
-  edit_shift: { icon:ICON.edit,  title:'Edit Dinas Manual (Admin)' }
+  edit_shift: { icon:ICON.edit,  title:'Edit Dinas Manual (Admin)' },
+  user_request: { icon:ICON.cuti, title:'Pengajuan Cuti / Kuning' }
 };
 const backdrop = document.getElementById('modalBackdrop');
 function openModal(kind){
@@ -1311,6 +1441,7 @@ function renderModal(){
   else if(activePanel==='lock') renderLockPanel(body);
   else if(activePanel==='swap') renderSwapPanel(body);
   else if(activePanel==='edit_shift') renderManualEditPanel(body);
+  else if(activePanel==='user_request') renderUserRequestPanel(body);
   else renderRequestPanel(body, activePanel, 'personel');
 }
 document.querySelectorAll('.navbtn[data-panel]').forEach(btn=> btn.addEventListener('click', ()=> openModal(btn.dataset.panel)));
@@ -2045,13 +2176,17 @@ function freezeBoundaryForMonth(year, month){
 function computeCell(day, pid, dayEntry, month, year){
   const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===pid && c.month===month && c.year===year && day>=c.start && day<=c.end);
   const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===pid && k.month===month && k.year===year && day>=k.start && day<=k.end);
+  const pendingCuti = cutiList.some(c=>c.status==='pending' && c.personnelId===pid && c.month===month && c.year===year && day>=c.start && day<=c.end);
+  const pendingKuning = kuningList.some(k=>k.status==='pending' && k.personnelId===pid && k.month===month && k.year===year && day>=k.start && day<=k.end);
   const swappedOut = swapList.some(s=>s.status==='approved' && s.requesterId===pid && s.month===month && s.year===year && s.date===day);
   const isPS = dayEntry && dayEntry.PS && dayEntry.PS.includes(pid);
   const isM = dayEntry && dayEntry.M && dayEntry.M.includes(pid);
   const locked = (isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || (isM && dayEntry.lockedM && dayEntry.lockedM.includes(pid));
   const swappedIn = (isPS && dayEntry.swappedPS && dayEntry.swappedPS.includes(pid)) || (isM && dayEntry.swappedM && dayEntry.swappedM.includes(pid));
-  if(onCuti) return {cls:'slot-cuti', label:'C', title:'Cuti'};
-  if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning'};
+  if(onCuti) return {cls:'slot-cuti', label:'C', title:'Cuti (Disetujui)'};
+  if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning (Disetujui)'};
+  if(pendingCuti) return {cls:'slot-cuti-pending', label:'C⏳', title:'Pengajuan Cuti (Menunggu persetujuan admin)'};
+  if(pendingKuning) return {cls:'slot-kuning-pending', label:'K⏳', title:'Pengajuan Kuning (Menunggu persetujuan admin)'};
   if(swappedOut) return {cls:'slot-swap', label:'T', title:'Tukar dinas — jadwal hari ini digantikan personel lain'};
   if(isPS) return {cls:'slot-PS'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'PS', title: locked?'PS (terkunci admin)': swappedIn?'PS (menggantikan, tukar dinas)':'Pagi Siang'};
   if(isM) return {cls:'slot-M'+(locked?' locked':'')+(swappedIn?' swapped':''), label:'M', title: locked?'M (terkunci admin)': swappedIn?'M (menggantikan, tukar dinas)':'Malam'};
@@ -3439,6 +3574,370 @@ async function saveManualEdit(){
 }
 
 /* =====================================================================
+   PENGAJUAN CEPAT CUTI & KUNING VIA POPUP (UNTUK PERSONEL)
+   ===================================================================== */
+let userRequestState = null;
+
+function openUserRequestModal(day, pid){
+  if(!isUserRole()){
+    toast('Silakan masuk sebagai Personel di kanan atas.');
+    return;
+  }
+  const myPid = currentPersonnelId();
+  if(pid !== myPid){
+    toast(`Anda hanya dapat mengajukan Cuti atau Kuning untuk akun Anda sendiri (${personnel[myPid].name}).`);
+    return;
+  }
+  const freeze = freezeBoundaryForMonth(viewY, viewM);
+  if(day <= freeze){
+    toast(`Tanggal ${day} sudah berjalan (fix) dan tidak dapat diajukan.`);
+    return;
+  }
+
+  const existingCuti = cutiList.find(c => c.personnelId === pid && c.year === viewY && c.month === viewM && day >= c.start && day <= c.end);
+  const existingKuning = kuningList.find(k => k.personnelId === pid && k.year === viewY && k.month === viewM && day >= k.start && day <= k.end);
+
+  let initialMode = 'CUTI';
+  let initialReason = '';
+  if(existingKuning){
+    initialMode = 'KUNING';
+    initialReason = existingKuning.reason || '';
+  } else if(existingCuti){
+    initialMode = 'CUTI';
+    initialReason = existingCuti.reason || '';
+  }
+
+  userRequestState = {
+    day,
+    pid,
+    year: viewY,
+    month: viewM,
+    selectedMode: initialMode,
+    reason: initialReason,
+    existingCuti,
+    existingKuning
+  };
+
+  openModal('user_request');
+}
+
+function renderUserRequestPanel(area){
+  if(!userRequestState) return;
+  const { day, pid, year, month, selectedMode, reason, existingCuti, existingKuning } = userRequestState;
+  const p = getPerson(pid);
+  const dow = new Date(year, month - 1, day).getDay();
+  const dayNamesFull = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const dayStr = `${dayNamesFull[dow]}, ${day} ${monthNames[month-1]} ${year}`;
+
+  const sched = schedules[skey(year, month)];
+  let currentShiftLabel = 'Libur / Belum ada jadwal';
+  if(sched && sched.calendar && sched.calendar[day-1]){
+    const dEntry = sched.calendar[day-1];
+    if((dEntry.PS||[]).includes(pid)) currentShiftLabel = 'Pagi Siang (PS)';
+    else if((dEntry.M||[]).includes(pid)) currentShiftLabel = 'Malam (M)';
+    else if((dEntry.L1||[]).includes(pid)) currentShiftLabel = 'Libur-1 (L1)';
+    else if((dEntry.L2||[]).includes(pid)) currentShiftLabel = 'Libur-2 (L2)';
+    else currentShiftLabel = 'Libur / Antre';
+  }
+
+  // Quota Cuti
+  const totalCuti = cutiBalanceForYear(pid, year);
+  const usedCuti = cutiUsedInYear(pid, year);
+  const sisaCuti = Math.max(0, totalCuti - usedCuti);
+
+  // Quota Kuning
+  const isKuningOpen = isKuningWindowOpen();
+  const quotaKuning = effectiveKuningQuota(pid, year, month);
+  const usedKuning = kuningUsedInMonth(pid, month, year);
+  const sisaKuning = Math.max(0, quotaKuning - usedKuning);
+
+  // Existing request banner
+  let existingBanner = '';
+  const existingItem = existingCuti || existingKuning;
+  if(existingCuti){
+    const isApp = existingCuti.status === 'approved';
+    existingBanner = `
+      <div style="background:#FDF2F1; border:1px solid #F5C6C2; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:700; color:var(--red); font-size:13px;">🏖 Pengajuan Cuti Tanggal Ini</span>
+          <span class="badge ${isApp?'approved':'pending'}">${isApp?'Disetujui':'Menunggu Admin'}</span>
+        </div>
+        <div style="color:var(--ink-soft); font-size:12px;">Alasan: <i>${esc(existingCuti.reason || 'Cuti tahunan')}</i></div>
+      </div>
+    `;
+  } else if(existingKuning){
+    const isApp = existingKuning.status === 'approved';
+    existingBanner = `
+      <div style="background:#FEF9E7; border:1px solid #FCE599; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:700; color:#7D5A06; font-size:13px;">⭐ Pengajuan Kuning Tanggal Ini</span>
+          <span class="badge ${isApp?'approved':'pending'}">${isApp?'Disetujui':'Menunggu Admin'}</span>
+        </div>
+        <div style="color:var(--ink-soft); font-size:12px;">Alasan: <i>${esc(existingKuning.reason || 'Keinginan libur')}</i></div>
+      </div>
+    `;
+  }
+
+  document.getElementById('mSub').textContent = `${p.name} · ${dayStr}`;
+
+  area.innerHTML = `
+    <div class="card" style="box-shadow:none; border:none; padding:4px;">
+      <!-- Header Info -->
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);">
+        <div>
+          <div style="font-size:15px; font-weight:700; color:var(--ink);">${esc(p.name)}</div>
+          <div style="font-size:12.5px; color:var(--ink-soft);">${dayStr}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--ink-soft); text-transform:uppercase; font-weight:600;">Jadwal Tanggal Ini</div>
+          <div style="font-family:var(--mono); font-weight:700; font-size:13px; color:var(--navy);">${currentShiftLabel}</div>
+        </div>
+      </div>
+
+      ${existingBanner}
+
+      <!-- Pilihan 2 Tombol: Cuti vs Kuning -->
+      <div class="formrow" style="margin-bottom:12px;">
+        <label style="font-weight:700; font-size:13px;">Pilih Jenis Pengajuan:</label>
+        <div class="user-req-toggle">
+          <button type="button" class="user-opt-btn opt-cuti ${selectedMode==='CUTI'?'active':''}" data-mode="CUTI">
+            <span class="u-icon">🏖</span>
+            <span class="u-title" style="color:var(--red);">Cuti Resmi (C)</span>
+            <span class="u-sub">Potong cuti tahunan</span>
+          </button>
+          <button type="button" class="user-opt-btn opt-kuning ${selectedMode==='KUNING'?'active':''}" data-mode="KUNING">
+            <span class="u-icon">⭐</span>
+            <span class="u-title" style="color:#7D5A06;">Kuning (K)</span>
+            <span class="u-sub">Keinginan libur</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Detail Box Cuti -->
+      <div id="userCutiDetailBox" style="${selectedMode==='CUTI'?'':'display:none;'}">
+        <div class="quotainfo" style="margin-bottom:12px; background:#F0FDF4; border:1px solid #BBF7D0; color:#14532D; border-radius:10px; padding:11px 13px;">
+          Sisa cuti tahunan Anda (${year}): <b>${sisaCuti}</b> dari <b>${totalCuti}</b> hari${usedCuti>0?` (${usedCuti} hari terpakai/menunggu)`:''}.
+          ${sisaCuti <= 0 ? '<div style="color:var(--red); font-weight:700; margin-top:4px;">⚠ Kuota cuti tahunan Anda telah habis.</div>' : ''}
+        </div>
+        <div class="formrow" style="margin-bottom:0;">
+          <label style="font-size:12.5px; font-weight:600;">Alasan Cuti:</label>
+          <input type="text" id="txtUserCutiReason" value="${esc(reason)}" placeholder="mis. Keperluan keluarga / acara penting / mudik">
+        </div>
+      </div>
+
+      <!-- Detail Box Kuning -->
+      <div id="userKuningDetailBox" style="${selectedMode==='KUNING'?'':'display:none;'}">
+        ${!isKuningOpen ? `
+          <div style="background:#FFF7ED; border:1px solid #FFEDD5; border-radius:10px; padding:10px 13px; font-size:12px; color:#9A3412; margin-bottom:10px; display:flex; gap:8px; align-items:flex-start;">
+            <span style="font-size:16px; flex:none;">⏳</span>
+            <div><b>Pengajuan Kuning Sedang Ditutup:</b> Pengajuan hanya dibuka tiap tanggal ${kuningWindow.start}–${kuningWindow.end} tiap bulan (dibuka lagi ${nextKuningOpenLabel()}).</div>
+          </div>
+        ` : ''}
+        <div class="quotainfo" style="margin-bottom:12px; background:#FEF9E7; border:1px solid #FCE599; color:#7D5A06; border-radius:10px; padding:11px 13px;">
+          Kuota kuning bulan ${monthNames[month-1]} ${year}: sisa <b>${sisaKuning}</b> dari <b>${quotaKuning}</b> hari${usedKuning>0?` (${usedKuning} hari terpakai/menunggu)`:''}.
+          ${sisaKuning <= 0 ? '<div style="color:var(--red); font-weight:700; margin-top:4px;">⚠ Batas kuota kuning bulan ini telah tercapai.</div>' : ''}
+        </div>
+        <div class="formrow" style="margin-bottom:0;">
+          <label style="font-size:12.5px; font-weight:600;">Alasan Kuning (Keinginan Libur):</label>
+          <input type="text" id="txtUserKuningReason" value="${esc(reason)}" placeholder="mis. Keinginan libur tanggal ini">
+        </div>
+      </div>
+
+      <!-- Tombol Aksi -->
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+        <button class="submit" id="btnSubmitUserReq" style="padding:14px; font-size:14px; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px;">
+          ${selectedMode==='CUTI' ? '🏖 Kirim Pengajuan Cuti' : '⭐ Kirim Pengajuan Kuning'}
+        </button>
+        ${existingItem ? `
+          <button type="button" id="btnCancelUserReq" style="padding:11px; font-size:13px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
+            🗑 Batalkan Pengajuan Tanggal Ini
+          </button>
+        ` : ''}
+        <button class="ghost" type="button" onclick="closeModal()" style="padding:10px; border-radius:10px;">Tutup</button>
+      </div>
+    </div>
+  `;
+
+  // Mode buttons
+  area.querySelectorAll('.user-opt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      area.querySelectorAll('.user-opt-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      userRequestState.selectedMode = btn.dataset.mode;
+
+      const cutiBox = document.getElementById('userCutiDetailBox');
+      const kuningBox = document.getElementById('userKuningDetailBox');
+      const submitBtn = document.getElementById('btnSubmitUserReq');
+
+      if(cutiBox) cutiBox.style.display = userRequestState.selectedMode === 'CUTI' ? 'block' : 'none';
+      if(kuningBox) kuningBox.style.display = userRequestState.selectedMode === 'KUNING' ? 'block' : 'none';
+      if(submitBtn){
+        submitBtn.innerHTML = userRequestState.selectedMode === 'CUTI'
+          ? '🏖 Kirim Pengajuan Cuti'
+          : '⭐ Kirim Pengajuan Kuning';
+      }
+    });
+  });
+
+  // Reason inputs
+  const txtCuti = document.getElementById('txtUserCutiReason');
+  if(txtCuti){
+    txtCuti.addEventListener('input', () => { userRequestState.reason = txtCuti.value; });
+  }
+  const txtKuning = document.getElementById('txtUserKuningReason');
+  if(txtKuning){
+    txtKuning.addEventListener('input', () => { userRequestState.reason = txtKuning.value; });
+  }
+
+  // Buttons
+  const btnSubmit = document.getElementById('btnSubmitUserReq');
+  if(btnSubmit) btnSubmit.addEventListener('click', submitUserRequest);
+
+  const btnCancel = document.getElementById('btnCancelUserReq');
+  if(btnCancel) btnCancel.addEventListener('click', cancelUserRequest);
+}
+
+async function submitUserRequest(){
+  if(!userRequestState) return;
+  const { day, pid, year, month, selectedMode, reason, existingCuti, existingKuning } = userRequestState;
+
+  if(selectedMode === 'KUNING' && !isKuningWindowOpen()){
+    alert(`Pengajuan kuning sedang ditutup. Pengajuan hanya dibuka tiap tanggal ${kuningWindow.start}–${kuningWindow.end} tiap bulan.`);
+    return;
+  }
+
+  // Bersihkan request tipe lain jika beralih jenis
+  if(selectedMode === 'CUTI' && existingKuning){
+    const idx = kuningList.findIndex(k => k.id === existingKuning.id);
+    if(idx >= 0){
+      kuningList.splice(idx, 1);
+      await dbDelete('kuning_requests', existingKuning.id);
+    }
+  } else if(selectedMode === 'KUNING' && existingCuti){
+    const idx = cutiList.findIndex(c => c.id === existingCuti.id);
+    if(idx >= 0){
+      cutiList.splice(idx, 1);
+      await dbDelete('cuti_requests', existingCuti.id);
+    }
+  }
+
+  if(selectedMode === 'CUTI'){
+    const balance = cutiBalanceForYear(pid, year);
+    const used = cutiUsedInYear(pid, year);
+    const remaining = balance - used;
+    if(remaining <= 0 && !existingCuti){
+      const ok = confirm(`Sisa cuti tahunan Anda tinggal ${remaining} hari. Apakah Anda tetap ingin mengajukan permohonan cuti ini?`);
+      if(!ok) return;
+    }
+
+    if(existingCuti){
+      existingCuti.reason = reason || 'Cuti tahunan';
+      await dbUpdate('cuti_requests', existingCuti.id, { reason: existingCuti.reason });
+      toast(`Pengajuan cuti tanggal ${day} berhasil diperbarui.`);
+    } else {
+      const row = {
+        id: nextId++,
+        personnelId: pid,
+        start: day,
+        end: day,
+        reason: reason || 'Cuti tahunan',
+        status: 'pending',
+        month,
+        year
+      };
+      cutiList.push(row);
+      await dbInsert('cuti_requests', {
+        id: row.id,
+        personnel_id: pid,
+        start_day: day,
+        end_day: day,
+        reason: row.reason,
+        status: 'pending',
+        month,
+        year
+      });
+      toast(`Pengajuan cuti tanggal ${day} terkirim (menunggu persetujuan admin).`);
+    }
+  } else if(selectedMode === 'KUNING'){
+    const quota = effectiveKuningQuota(pid, year, month);
+    const used = kuningUsedInMonth(pid, month, year);
+    const remaining = quota - used;
+    if(remaining <= 0 && !existingKuning){
+      const ok = confirm(`Kuota kuning Anda bulan ini sudah terpakai (${used}/${quota} hari). Apakah Anda tetap ingin mengajukan?`);
+      if(!ok) return;
+    }
+
+    if(existingKuning){
+      existingKuning.reason = reason || 'Keinginan libur';
+      await dbUpdate('kuning_requests', existingKuning.id, { reason: existingKuning.reason });
+      toast(`Pengajuan kuning tanggal ${day} berhasil diperbarui.`);
+    } else {
+      const row = {
+        id: nextId++,
+        personnelId: pid,
+        start: day,
+        end: day,
+        reason: reason || 'Keinginan libur',
+        status: 'pending',
+        month,
+        year
+      };
+      kuningList.push(row);
+      await dbInsert('kuning_requests', {
+        id: row.id,
+        personnel_id: pid,
+        start_day: day,
+        end_day: day,
+        reason: row.reason,
+        status: 'pending',
+        month,
+        year
+      });
+      toast(`Pengajuan kuning tanggal ${day} terkirim (menunggu persetujuan admin).`);
+    }
+  }
+
+  closeModal();
+  renderScheduleArea();
+  updateNavBadges();
+}
+
+async function cancelUserRequest(){
+  if(!userRequestState) return;
+  const { day, existingCuti, existingKuning } = userRequestState;
+  const target = existingCuti || existingKuning;
+  if(!target) return;
+
+  const kindLabel = existingCuti ? 'Cuti' : 'Kuning';
+  if(target.status === 'approved'){
+    const ok = confirm(`Pengajuan ini sudah DISETUJUI oleh Admin. Apakah Anda yakin ingin membatalkannya?`);
+    if(!ok) return;
+  } else {
+    const ok = confirm(`Batalkan pengajuan ${kindLabel} untuk tanggal ${day}?`);
+    if(!ok) return;
+  }
+
+  if(existingCuti){
+    const idx = cutiList.findIndex(c => c.id === existingCuti.id);
+    if(idx >= 0){
+      cutiList.splice(idx, 1);
+      await dbDelete('cuti_requests', existingCuti.id);
+    }
+  } else if(existingKuning){
+    const idx = kuningList.findIndex(k => k.id === existingKuning.id);
+    if(idx >= 0){
+      kuningList.splice(idx, 1);
+      await dbDelete('kuning_requests', existingKuning.id);
+    }
+  }
+
+  toast(`Pengajuan ${kindLabel} tanggal ${day} berhasil dibatalkan.`);
+  closeModal();
+  renderScheduleArea();
+  updateNavBadges();
+}
+
+/* =====================================================================
    RENDER JADWAL
    ===================================================================== */
 function cellInfo(day, personnelId, result, month, year){
@@ -3470,6 +3969,18 @@ function buildScheduleBlockHtml(year, month){
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex:none;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span><b>Mode Admin:</b> Klik sel tanggal mana saja (mulai besok ke depan) untuk mengedit jadwal manual. Peringatan kaedah rotasi dan kuota akan dihitung secara langsung.</span>
     </div>` : '';
+  const myPid = currentPersonnelId();
+  const userTip = (!isAdmin() && isUserRole() && myPid !== null) ? `
+    <div style="background:#EBF7EE; border:1px solid #B8E4C4; border-radius:8px; padding:9px 14px; font-size:12px; color:#14532D; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex:none;"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+      <span><b>Halo, ${esc(personnel[myPid].name)}:</b> Anda dapat mengetuk / mengklik tanggal pada baris jadwal Anda untuk mengajukan <b>Cuti (C)</b> atau <b>Kuning (K)</b> secara cepat.</span>
+    </div>` : '';
+  const guestTip = (!isAdmin() && !isUserRole()) ? `
+    <div style="background:#F4F6F8; border:1px solid #D5DCE2; border-radius:8px; padding:9px 14px; font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex:none;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Masuk sebagai <b>Personel</b> (di kanan atas) untuk mengajukan <b>Cuti</b> atau <b>Kuning</b> langsung dengan mengetuk tanggal pada kalender.</span>
+    </div>` : '';
+
   return `<div class="sched-block">
     <div class="sched-title">
       <div class="t1">JADWAL DINAS SHIFT PENGELOLA DATABASE BMKG</div>
@@ -3477,6 +3988,8 @@ function buildScheduleBlockHtml(year, month){
       <div class="t3">${monthNames[month-1]} ${year}</div>
     </div>
     ${adminTip}
+    ${userTip}
+    ${guestTip}
     <div class="calwrap" id="calWrap"></div>
     <div class="legend">
       <span><i style="background:#DDEFEE;border:1px solid #0A4552"></i> PS</span>
@@ -3484,13 +3997,23 @@ function buildScheduleBlockHtml(year, month){
       <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur/antre</span>
       <span><i style="background:#AAB8C6;border:1px solid #475569"></i> Sabtu / Minggu (abu-abu)</span>
       <span><i style="background:var(--red)"></i> Cuti</span>
+      <span><i style="background:#FDF2F1;border:1.5px dashed var(--red)"></i> Cuti (menunggu admin)</span>
       <span><i style="background:var(--kuning)"></i> Kuning</span>
+      <span><i style="background:#FEF9E7;border:1.5px dashed #C8990A"></i> Kuning (menunggu admin)</span>
       <span><i style="background:#fff;border:2px solid var(--indigo)"></i> Terkunci admin</span>
       <span><i style="background:#D7ECEA;border:1px solid #0F6B5C"></i> Ditukar (digantikan)</span>
       <span><i style="background:#fff;border:2px dashed var(--green)"></i> Pengganti (tukar dinas)</span>
       <span><i style="background:rgba(31,95,191,.25);border:2px solid var(--blue)"></i> Tanggal 1 s/d hari ini (fix &amp; terkunci permanen)</span>
     </div>
-    <div class="log" id="logBox"></div>
+    ${isAdmin() ? `
+      <div style="margin-top:16px;">
+        <div style="font-size:12px; font-weight:700; color:var(--navy); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Log Audit Kaedah Rotasi &amp; Catatan Penyesuaian Jadwal (Khusus Admin):</span>
+        </div>
+        <div class="log" id="logBox"></div>
+      </div>
+    ` : ''}
   </div>`;
 }
 function fillScheduleBlock(year, month, result){
@@ -3498,6 +4021,7 @@ function fillScheduleBlock(year, month, result){
   const selTo = selectionEnd(year, month, result.days);
   const isTodayCol = d => year===rt.y && month===rt.m && d===rt.d;
   const dayNamesShort = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const myPid = currentPersonnelId();
   let head = `<tr><th></th><th>Nama</th>`;
   for(let d=1; d<=result.days; d++){
     const dow = new Date(year, month - 1, d).getDay();
@@ -3518,16 +4042,20 @@ function fillScheduleBlock(year, month, result){
       const wkndCls = isWknd ? ' weekend' : '';
       cells += `<td class="${info.cls}${sel}${wkndCls}" title="${info.title}" data-day="${d}" data-pid="${p.id}">${info.label}</td>`;
     }
-    return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}
+    const isMe = (myPid === p.id);
+    const rowCls = isMe ? ' class="my-user-row"' : '';
+    const nameLabel = isMe ? `${esc(p.name)} <span class="badge" style="background:#137333;color:#fff;font-size:9px;padding:2px 6px;margin-left:4px;vertical-align:middle;">Anda</span>` : esc(p.name);
+    return `<tr${rowCls}><th class="no">${idx+1}</th><th class="nama">${nameLabel}</th>${cells}
       <td class="total">${result.monthPS[idx]}</td><td class="total">${result.monthM[idx]}</td>
       <td class="total">${result.monthPS[idx]+result.monthM[idx]}</td></tr>`;
   }).join('');
   document.getElementById('calWrap').innerHTML = `<table class="cal"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 
+  const calEl = document.getElementById('calWrap');
+  const freeze = freezeBoundaryForMonth(year, month);
+
   if(isAdmin()){
-    const calEl = document.getElementById('calWrap');
     calEl.querySelector('table.cal').classList.add('admin-mode');
-    const freeze = freezeBoundaryForMonth(year, month);
     calEl.querySelectorAll('td[data-day]').forEach(td => {
       const d = parseInt(td.dataset.day);
       const pid = parseInt(td.dataset.pid);
@@ -3537,12 +4065,44 @@ function fillScheduleBlock(year, month, result){
         td.addEventListener('click', () => openManualEditModal(d, pid));
       }
     });
+  } else if(isUserRole() && myPid !== null){
+    calEl.querySelector('table.cal').classList.add('user-mode');
+    calEl.querySelectorAll('td[data-day]').forEach(td => {
+      const d = parseInt(td.dataset.day);
+      const pid = parseInt(td.dataset.pid);
+      if(pid === myPid){
+        if(d > freeze){
+          td.classList.add('cell-clickable', 'user-cell-clickable');
+          td.title = (td.title ? td.title + ' · ' : '') + 'Klik / Ketuk untuk ajukan Cuti atau Kuning';
+          td.addEventListener('click', () => openUserRequestModal(d, myPid));
+        }
+      } else {
+        td.addEventListener('click', () => {
+          toast(`Ini baris ${personnel[pid].name}. Anda hanya dapat mengajukan Cuti atau Kuning untuk akun Anda sendiri (${personnel[myPid].name}).`);
+        });
+      }
+    });
+  } else {
+    // Pengunjung belum login
+    calEl.querySelectorAll('td[data-day]').forEach(td => {
+      td.addEventListener('click', () => {
+        toast('Silakan masuk sebagai Personel di kanan atas untuk mengajukan Cuti atau Kuning.');
+      });
+    });
   }
 
-  const problems = result.logs.filter(l=>l.type!=='ok');
-  const hasBad = problems.some(l=>l.type==='bad');
-  document.getElementById('logBox').innerHTML = (hasBad ? '' : `<div class="ok">Tidak ada konflik. Semua slot PS/M (2+2 tiap hari) terisi.</div>`)
-    + problems.map(l=>`<div class="${l.type}">${l.type==='bad'?'✕':'→'} ${l.text}</div>`).join('');
+  const logEl = document.getElementById('logBox');
+  if(logEl){
+    if(isAdmin()){
+      const problems = result.logs.filter(l=>l.type!=='ok');
+      const hasBad = problems.some(l=>l.type==='bad');
+      logEl.innerHTML = (hasBad ? '' : `<div class="ok">Tidak ada konflik. Semua slot PS/M (2+2 tiap hari) terisi.</div>`)
+        + problems.map(l=>`<div class="${l.type}">${l.type==='bad'?'✕':'→'} ${l.text}</div>`).join('');
+    } else {
+      logEl.innerHTML = '';
+      logEl.style.display = 'none';
+    }
+  }
 }
 function renderScheduleArea(){
   const area = document.getElementById('scheduleArea');
