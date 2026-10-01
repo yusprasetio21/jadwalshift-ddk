@@ -192,8 +192,8 @@
   table.cal tbody th{ text-align:left; background:var(--panel); position:sticky; left:0; z-index:3; font-weight:600; border-right:2px solid var(--line); }
   table.cal tbody th.no{ left:0; width:22px; text-align:center; color:var(--ink-soft); font-weight:400; z-index:4; }
   table.cal tbody th.nama{ left:22px; min-width:140px; z-index:4; }
-  td.slot-PS{ background-color:#DDEFEE; color:#0A4552; font-weight:700; font-family:var(--mono); }
-  td.slot-M{ background-color:#E6E1F5; color:#3B2E75; font-weight:700; font-family:var(--mono); }
+  td.slot-PS{ background-color:#EDF6F6; color:#0E5C6E; font-weight:700; font-family:var(--mono); }
+  td.slot-M{ background-color:#F4F1FA; color:#433878; font-weight:700; font-family:var(--mono); }
   td.slot-off{ color:var(--ink-soft); font-family:var(--mono); }
   td.slot-cuti{ background-color:var(--red); color:#fff; font-weight:700; font-family:var(--mono); }
   td.slot-kuning{ background-color:var(--kuning); color:var(--kuning-ink); font-weight:700; font-family:var(--mono); }
@@ -209,8 +209,8 @@
   table.cal thead th.sel.today.weekend{ background:#132845; }
   table.cal td.weekend{ background-color:#CAD4DE; }
   table.cal td.slot-off.weekend{ background-color:#AAB8C6; color:#0F172A; font-weight:700; }
-  table.cal td.slot-PS.weekend{ background-color:#BEE3E1; }
-  table.cal td.slot-M.weekend{ background-color:#CBC2E5; }
+  table.cal td.slot-PS.weekend{ background-color:#D8ECE9; color:#0A4552; }
+  table.cal td.slot-M.weekend{ background-color:#E5DFEF; color:#3B2E75; }
   table.cal td.slot-kuning,
   table.cal td.slot-kuning.weekend{ background-color:var(--kuning) !important; color:var(--kuning-ink) !important; font-weight:700; font-family:var(--mono); }
   table.cal td.slot-cuti,
@@ -693,6 +693,44 @@
     font-size:10.5px; font-weight:700; letter-spacing:.03em;
     background:var(--green-pale); color:var(--green);
     padding:4px 10px; border-radius:99px;
+  }
+  .print-item.compact{ padding:9px 12px; gap:9px; border-radius:8px; }
+  .print-item.compact .pi-icon{ width:28px; height:28px; border-radius:7px; }
+  .print-item.compact .pi-icon svg{ width:15px; height:15px; }
+  .print-item.compact .pi-title{ font-size:12.5px; }
+  .print-item.compact .pi-sub{ font-size:10.5px; }
+  .print-item.compact .pi-badge{ font-size:9.5px; padding:2px 8px; }
+
+  .admin-print-grid{
+    display:grid; grid-template-columns: minmax(0, 1fr) minmax(0, 290px);
+    gap:16px; align-items:start;
+  }
+  .admin-print-cards{
+    display:grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.32fr);
+    gap:14px; align-items:stretch;
+  }
+  .admin-card.compact-card{
+    padding:14px 16px;
+  }
+  .admin-card.compact-card .admin-card-title{
+    margin-bottom:10px; font-size:12px;
+  }
+  .admin-card.compact-card .formrow label{
+    font-size:11px; margin-bottom:3px;
+  }
+  .admin-card.compact-card .formrow input,
+  .admin-card.compact-card .formrow select{
+    padding:6px 9px; font-size:12.5px; border-radius:8px;
+  }
+  .admin-card.compact-card button.submit{
+    padding:9px 12px; font-size:13px; font-weight:700;
+  }
+  @media (max-width:1150px){
+    .admin-print-grid{ grid-template-columns: 1fr; }
+    .admin-print-cards{ grid-template-columns: minmax(0, 1fr) minmax(0, 1.32fr); }
+  }
+  @media (max-width:760px){
+    .admin-print-cards{ grid-template-columns: 1fr; }
   }
 
   @media print{
@@ -4099,8 +4137,8 @@ function buildScheduleBlockHtml(year, month){
     ${guestTip}
     <div class="calwrap" id="calWrap"></div>
     <div class="legend">
-      <span><i style="background:#DDEFEE;border:1px solid #0A4552"></i> PS</span>
-      <span><i style="background:#E6E1F5;border:1px solid #3B2E75"></i> M</span>
+      <span><i style="background:#EDF6F6;border:1px solid #0E5C6E"></i> PS</span>
+      <span><i style="background:#F4F1FA;border:1px solid #433878"></i> M</span>
       <span><i style="background:#fff;border:1px solid var(--line)"></i> Libur/antre</span>
       <span><i style="background:#AAB8C6;border:1px solid #475569"></i> Sabtu / Minggu (abu-abu)</span>
       <span><i style="background:var(--red)"></i> Cuti</span>
@@ -4753,7 +4791,7 @@ function renderAdminPrint(body){
   monthsWithSched.sort((a,b)=> a.y===b.y ? a.m-b.m : a.y-b.y);
 
   const listHtml = monthsWithSched.length
-    ? monthsWithSched.map(x=>`<button class="print-item" onclick="printSchedule(${x.y}, ${x.m})">
+    ? monthsWithSched.map(x=>`<button class="print-item compact" onclick="printSchedule(${x.y}, ${x.m})" type="button">
         <div class="pi-icon">${ICON.print}</div>
         <div class="pi-text">
           <div class="pi-title">${monthNames[x.m-1]} ${x.y}</div>
@@ -4766,44 +4804,72 @@ function renderAdminPrint(body){
   body.innerHTML = `
     ${adminPanelHead(ICON.print, 'Cetak jadwal bulanan',
       'Cetak jadwal bulan yang sudah digenerate. Format sudah dioptimalkan untuk A4 landscape.')}
-    <div class="admin-panel-body">
-      <div class="admin-grid">
-        <div class="admin-col">
-          <div class="admin-card">
-            <div class="admin-card-title"><span class="num">1</span> Cetak bulan tertentu</div>
-            <div class="field-row">
-              <div class="formrow"><label>Bulan</label>
-                <select id="printMonth">${monthNames.map((n,i)=>`<option value="${i+1}" ${i+1===viewM?'selected':''}>${n}</option>`).join('')}</select>
-              </div>
-              <div class="formrow"><label>Tahun</label>
-                <select id="printYear">${[rtNow.y-1, rtNow.y, rtNow.y+1, rtNow.y+2].map(y=>`<option value="${y}" ${y===viewY?'selected':''}>${y}</option>`).join('')}</select>
+    <div class="admin-panel-body" style="padding:14px 18px;">
+      <div class="admin-print-grid">
+        <div class="admin-print-cards">
+          <!-- CARD 1: Cetak bulan tertentu -->
+          <div class="admin-card compact-card" style="display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+              <div class="admin-card-title"><span class="num">1</span> Cetak bulan tertentu</div>
+              <div class="field-row" style="gap:8px; margin-bottom:8px;">
+                <div class="formrow" style="margin-bottom:0; flex:1;">
+                  <label>Bulan</label>
+                  <select id="printMonth">${monthNames.map((n,i)=>`<option value="${i+1}" ${i+1===viewM?'selected':''}>${n}</option>`).join('')}</select>
+                </div>
+                <div class="formrow" style="margin-bottom:0; flex:1;">
+                  <label>Tahun</label>
+                  <select id="printYear">${[rtNow.y-1, rtNow.y, rtNow.y+1, rtNow.y+2].map(y=>`<option value="${y}" ${y===viewY?'selected':''}>${y}</option>`).join('')}</select>
+                </div>
               </div>
             </div>
-            <button class="submit" id="btnPrintNow">${ICON.print} Cetak tampilan biasa</button>
-            <div class="admin-info" style="margin-top:14px;">${ICON.info}<div>Tips: di dialog cetak pilih <b>Landscape</b> dan aktifkan <b>Background graphics</b> agar warna slot PS/M/Cuti/Kuning tercetak dengan benar.</div></div>
+            <div>
+              <button class="submit" id="btnPrintNow" type="button">${ICON.print} Cetak tampilan biasa</button>
+              <div style="font-size:11px; color:var(--ink-soft); margin-top:7px; display:flex; align-items:center; gap:5px; line-height:1.35;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="flex:none;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Pilih <b>Landscape</b> &amp; centang <b>Background graphics</b> saat dialog cetak.</span>
+              </div>
+            </div>
           </div>
 
-          <div class="admin-card">
-            <div class="admin-card-title"><span class="num">2</span> Cetak format resmi (untuk atasan)</div>
-            <div class="field-row">
-              <div class="formrow"><label>Lampiran</label><input type="text" id="fpLampiran" value="${printMeta.lampiran}" placeholder="Lampiran Surat II"></div>
-              <div class="formrow"><label>Nomor surat</label><input type="text" id="fpNomor" value="${printMeta.nomor}" placeholder="e.B/DB.00.01/059/DDK/VIII/2026"></div>
+          <!-- CARD 2: Cetak format resmi (untuk atasan) -->
+          <div class="admin-card compact-card" style="display:flex; flex-direction:column; justify-content:space-between; border-color:#DFBD70; background:#FFFDF9;">
+            <div>
+              <div class="admin-card-title" style="color:#7D5A06;"><span class="num" style="background:#C97A25;">2</span> Cetak format resmi (untuk atasan)</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 9px; margin-bottom:8px;">
+                <div class="formrow" style="margin-bottom:0;">
+                  <label>Lampiran</label>
+                  <input type="text" id="fpLampiran" value="${esc(printMeta.lampiran || '')}" placeholder="Lampiran Surat II">
+                </div>
+                <div class="formrow" style="margin-bottom:0;">
+                  <label>Nomor surat</label>
+                  <input type="text" id="fpNomor" value="${esc(printMeta.nomor || '')}" placeholder="e.B/DB.00.01/...">
+                </div>
+                <div class="formrow" style="margin-bottom:0;">
+                  <label>Tanggal surat</label>
+                  <input type="date" id="fpTanggal" value="${esc(printMeta.tanggal || '')}">
+                </div>
+                <div class="formrow" style="margin-bottom:0;">
+                  <label>Tgl libur ekstra</label>
+                  <input type="text" id="fpHolidays" value="${esc(extraHolidays[skey(viewY,viewM)] || '')}" placeholder="mis. 1, 17">
+                </div>
+              </div>
             </div>
-            <div class="field-row">
-              <div class="formrow"><label>Tanggal surat</label><input type="date" id="fpTanggal" value="${printMeta.tanggal}"></div>
-              <div class="formrow"><label>Tanggal merah tambahan</label><input type="text" id="fpHolidays" value="${extraHolidays[skey(viewY,viewM)] || ''}" placeholder="mis. 1,17 (selain Sabtu/Minggu)"></div>
+            <div>
+              <button class="submit" id="btnPrintFormal" type="button" style="background:linear-gradient(135deg, #123A5E, #0E5C6E);">${ICON.print} Cetak format resmi</button>
+              <div style="font-size:11px; color:#8C6818; margin-top:7px; display:flex; align-items:center; gap:5px; line-height:1.35;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="flex:none;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Format resmi BMKG (Sabtu/Minggu abu-abu, Cuti merah, Kuning kuning). Buka di tab baru.</span>
+              </div>
             </div>
-            <button class="submit" id="btnPrintFormal">${ICON.print} Cetak format resmi</button>
-            <div class="admin-info" style="margin-top:14px;">${ICON.info}<div>Sabtu &amp; Minggu otomatis ditandai <b>Tanggal Merah</b> (abu-abu). Tambahkan tanggal libur nasional lain di kolom di atas, dipisah koma. Cuti (disetujui) selalu tercetak merah. Terbuka di tab baru, siap dicetak/disimpan sebagai PDF.</div></div>
           </div>
         </div>
-        <div class="admin-col">
-          <div class="admin-card">
-            <div class="admin-card-title"><span class="num">3</span> Jadwal tersedia
-              <span class="sub">${monthsWithSched.length} bulan</span>
-            </div>
-            <div class="print-list">${listHtml}</div>
+
+        <!-- CARD 3: Jadwal tersedia -->
+        <div class="admin-card compact-card">
+          <div class="admin-card-title"><span class="num">3</span> Jadwal tersedia
+            <span class="sub">${monthsWithSched.length} bulan</span>
           </div>
+          <div class="print-list" style="max-height:210px; overflow-y:auto; -webkit-overflow-scrolling:touch; gap:6px;">${listHtml}</div>
         </div>
       </div>
     </div>`;
