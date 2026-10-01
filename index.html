@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Portal Jadwal Shift — Pengelola Database BMKG</title>
+<title>PORTAL JADWAL SHIFT — DDK</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -363,61 +363,86 @@
   }
   .login-screen.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
   .login-card{
-    width:min(420px,100%); background:#fff; border-radius:18px; overflow:hidden;
+    width:min(480px, 94vw); max-height:94vh; display:flex; flex-direction:column;
+    background:#fff; border-radius:20px; overflow:hidden;
     box-shadow:0 30px 70px rgba(4,15,30,.5), 0 2px 8px rgba(4,15,30,.2);
     animation:loginIn .35s cubic-bezier(.2,.9,.3,1.1);
   }
   @keyframes loginIn{ from{ transform:translateY(20px) scale(.97); opacity:0; } to{ transform:none; opacity:1; } }
   .login-brand{
-    display:flex; align-items:center; gap:14px; padding:22px 22px 18px;
+    display:flex; align-items:center; gap:14px; padding:20px 22px 16px;
     background:linear-gradient(135deg, var(--navy-dark), var(--navy));
-    color:#fff;
+    color:#fff; flex:none;
   }
   .login-logo{
     width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,.14);
     display:flex; align-items:center; justify-content:center; flex:none;
   }
   .login-logo svg{ width:24px; height:24px; }
-  .login-title{ font-size:15px; font-weight:700; letter-spacing:.2px; }
-  .login-sub{ font-size:11.5px; color:#B9CCDD; margin-top:2px; }
-  .login-body{ padding:22px; }
-  .login-label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:7px; letter-spacing:.2px; }
+  .login-title{ font-size:16px; font-weight:700; letter-spacing:.2px; }
+  .login-sub{ font-size:12px; color:#B9CCDD; margin-top:2px; }
+  .login-body{
+    padding:18px 20px 20px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    display:flex; flex-direction:column;
+  }
+  .login-label{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:9px; letter-spacing:.2px; }
   .login-roles{
-    display:grid; grid-template-columns:1fr 1fr; gap:8px;
-    max-height:200px; overflow-y:auto; padding:2px;
+    display:flex; flex-direction:column; gap:8px;
+    max-height:min(58vh, 460px); overflow-y:auto; padding:2px 4px 6px 2px;
+    -webkit-overflow-scrolling:touch;
   }
   .login-role{
-    display:flex; align-items:center; gap:9px; padding:9px 11px;
-    border:1px solid var(--line); border-radius:9px; background:#fff; cursor:pointer;
-    font-size:12.5px; font-weight:600; color:var(--ink); text-align:left;
-    transition:border-color .15s, background .15s, box-shadow .15s;
+    display:flex; align-items:center; gap:12px; padding:12px 14px; min-height:52px;
+    border:1.5px solid var(--line); border-radius:12px; background:#fff; cursor:pointer;
+    font-size:13.5px; font-weight:600; color:var(--ink); text-align:left;
+    transition:all .15s ease;
+    -webkit-tap-highlight-color:rgba(14,92,110,.15);
   }
-  .login-role:hover{ border-color:var(--navy); background:#F4F8FC; }
-  .login-role.selected{ border-color:var(--navy); background:var(--teal-pale); box-shadow:0 0 0 3px rgba(18,58,94,.12); }
+  .login-role:hover{
+    border-color:var(--navy); background:#F4F8FC;
+    transform:translateY(-1px); box-shadow:0 3px 8px rgba(18,58,94,.08);
+  }
+  .login-role:active{ transform:scale(.98); }
+  .login-role.selected{ border-color:var(--navy); background:var(--teal-pale); box-shadow:0 0 0 3px rgba(18,58,94,.14); }
   .login-role .av{
-    width:26px; height:26px; border-radius:50%; flex:none;
+    width:36px; height:36px; border-radius:50%; flex:none;
     display:flex; align-items:center; justify-content:center;
-    font-size:10.5px; font-weight:700; color:#fff; letter-spacing:.3px;
+    font-size:12.5px; font-weight:700; color:#fff; letter-spacing:.3px;
+  }
+  .login-role.admin{
+    border-color:#DFBD70; background:#FFFDF7;
+  }
+  .login-role.admin:hover{
+    border-color:#C97A25; background:#FEF9E7;
   }
   .login-role.admin .av{ background:linear-gradient(135deg, #6B4E05, #C97A25); }
   .login-role.person .av{ background:linear-gradient(135deg, var(--navy-dark), var(--navy-light)); }
-  .login-role .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .login-role .nm{
+    font-weight:700; font-size:13.5px; color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .login-role .sub-arrow{
+    font-size:11.5px; font-weight:700; color:var(--navy); opacity:.75; flex:none;
+    padding:4px 8px; border-radius:7px; background:rgba(18,58,94,.06);
+    transition:opacity .15s, background .15s;
+  }
+  .login-role:hover .sub-arrow{ opacity:1; background:rgba(18,58,94,.14); }
   .login-pin{
     width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
     font-size:16px; letter-spacing:.4em; text-align:center; font-family:var(--mono);
-    background:#F7F9FB; transition:border-color .15s, box-shadow .15s;
+    background:#fff; transition:border-color .15s, box-shadow .15s;
   }
   .login-pin:focus{ border-color:var(--navy); outline:2px solid rgba(18,58,94,.15); outline-offset:0; background:#fff; }
   .login-hint{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; min-height:16px; line-height:1.5; }
   .login-hint.err{ color:var(--red); font-weight:600; }
   .login-btn{
-    width:100%; margin-top:16px; padding:13px; border-radius:10px; font-size:14px;
+    width:100%; margin-top:12px; padding:13px; border-radius:10px; font-size:14px; font-weight:700;
     background:var(--navy); justify-content:center;
   }
   .login-btn:hover{ background:var(--navy-dark); }
   .login-foot{
-    text-align:center; padding:12px; font-size:11px; color:var(--ink-soft);
-    background:#F7F9FB; border-top:1px solid var(--line); letter-spacing:.2px;
+    text-align:center; padding:11px; font-size:11px; color:var(--ink-soft);
+    background:#F7F9FB; border-top:1px solid var(--line); letter-spacing:.2px; flex:none;
   }
 
   /* ---------- user chip ---------- */
@@ -724,7 +749,17 @@
     .admin-shell{ padding:12px; }
   }
   @media (max-width:520px){
-    .login-roles{ grid-template-columns:1fr; }
+    .login-card{ width:96vw; max-height:95vh; border-radius:16px; }
+    .login-brand{ padding:14px 16px 12px; gap:10px; }
+    .login-logo{ width:38px; height:38px; }
+    .login-logo svg{ width:20px; height:20px; }
+    .login-title{ font-size:15px; }
+    .login-body{ padding:12px 14px 14px; }
+    .login-roles{ max-height:65vh; gap:8px; }
+    .login-role{ min-height:54px; padding:10px 12px; font-size:13.5px; }
+    .login-role .av{ width:36px; height:36px; font-size:12px; }
+    .login-role .nm{ font-size:13.5px; font-weight:700; }
+    .login-role .sub-arrow{ font-size:11px; padding:3px 6px; }
     .userchip-text{ display:none; }
     .userchip-btn{ padding:4px; }
     .user-req-toggle{ gap:8px; }
@@ -749,22 +784,32 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z"/></svg>
       </div>
       <div>
-        <div class="login-title">Portal Jadwal Shift</div>
-        <div class="login-sub">Pengelola Database BMKG</div>
+        <div class="login-title">PORTAL JADWAL SHIFT</div>
+        <div class="login-sub">DDK · Stasiun Meteorologi</div>
       </div>
     </div>
     <div class="login-body">
-      <label class="login-label">Masuk sebagai</label>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <label class="login-label" style="margin-bottom:0;">Pilih Nama / Akun</label>
+        <span style="font-size:11.5px; color:var(--ink-soft);">Klik nama Anda untuk masuk</span>
+      </div>
       <div class="login-roles" id="loginRoles"></div>
-      <label class="login-label" style="margin-top:14px">PIN</label>
-      <input type="password" id="loginPin" class="login-pin" placeholder="••••" inputmode="numeric" maxlength="8" autocomplete="off">
-      <div class="login-hint" id="loginHint"></div>
-      <button class="login-btn" id="loginBtn">
-        Masuk
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
-      </button>
+      
+      <!-- Admin PIN Section (hanya tampil jika Administrator diklik) -->
+      <div id="adminPinSection" style="display:none; margin-top:14px; padding-top:12px; border-top:1px dashed var(--line); animation:loginIn .2s ease;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <label class="login-label" style="margin-bottom:0; color:#9E7220;">PIN Administrator</label>
+          <button type="button" id="btnCancelAdminPin" style="background:none; border:none; color:var(--ink-soft); font-size:12px; font-weight:600; cursor:pointer; padding:2px 6px;">✕ Batal</button>
+        </div>
+        <input type="password" id="loginPin" class="login-pin" placeholder="••••" inputmode="numeric" maxlength="8" autocomplete="off">
+        <div class="login-hint" id="loginHint">Masukkan PIN admin untuk melanjutkan.</div>
+        <button class="login-btn" id="loginBtn" type="button" style="background:linear-gradient(135deg, #123A5E, #0A4552);">
+          Masuk sebagai Admin
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+        </button>
+      </div>
     </div>
-    <div class="login-foot">Sesi berakhir otomatis saat tab ditutup.</div>
+    <div class="login-foot">Personel cukup klik nama · Admin wajib PIN · Sesi berakhir saat tab ditutup</div>
   </div>
 </div>
 
@@ -772,7 +817,7 @@
 <div id="appRoot" style="display:none">
 <header>
   <div>
-    <h1>Portal Jadwal Shift — Pengelola Database BMKG</h1>
+    <h1>PORTAL JADWAL SHIFT — DDK</h1>
     <div class="sub" id="headerSubText" style="display:none;">2 orang PS + 2 orang M / hari · pola sama untuk semua: PS → M → Libur-1 → Libur-2 → antre lagi</div>
   </div>
   <div class="headctl">
@@ -1152,16 +1197,53 @@ function todayStr(){ const t=new Date(); return `${t.getFullYear()}-${pad2(t.get
 
 function renderLoginRoles(){
   const box = document.getElementById('loginRoles');
-  let html = `<button class="login-role admin" data-role="admin">
-      <span class="av">AD</span><span class="nm">Administrator</span></button>`;
-  html += personnel.map(p=>`<button class="login-role person" data-role="p${p.id}">
-      <span class="av">${initials(p.name)}</span><span class="nm">${p.name}</span></button>`).join('');
+  if(!box) return;
+  let html = `<button class="login-role admin" data-role="admin" type="button">
+      <span class="av">AD</span>
+      <div style="flex:1; min-width:0;">
+        <span class="nm" style="display:block;">Administrator</span>
+        <span style="font-size:11px; color:#9E7220; font-weight:600;">Akses Penuh · Wajib PIN</span>
+      </div>
+      <span class="sub-arrow" style="color:#C97A25; background:rgba(201,122,37,.1);">PIN 🔒</span>
+    </button>`;
+  html += personnel.map(p=>`<button class="login-role person" data-role="p${p.id}" type="button">
+      <span class="av">${initials(p.name)}</span>
+      <div style="flex:1; min-width:0;">
+        <span class="nm" style="display:block;">${p.name}</span>
+        <span style="font-size:11px; color:var(--ink-soft); font-weight:500;">Personel Shift</span>
+      </div>
+      <span class="sub-arrow">Masuk →</span>
+    </button>`).join('');
   box.innerHTML = html;
   box.querySelectorAll('.login-role').forEach(b=>{
     b.addEventListener('click', ()=>{
-      box.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
-      b.classList.add('selected');
-      updateLoginHint();
+      const role = b.dataset.role;
+      if(role==='admin'){
+        box.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+        b.classList.add('selected');
+        const pinSec = document.getElementById('adminPinSection');
+        if(pinSec){
+          pinSec.style.display = 'block';
+          const pinBox = document.getElementById('loginPin');
+          if(pinBox){
+            pinBox.value = '';
+            pinBox.focus();
+          }
+          const hint = document.getElementById('loginHint');
+          if(hint){
+            hint.classList.remove('err');
+            hint.textContent = 'Masukkan PIN admin (1234) untuk melanjutkan.';
+          }
+        }
+      } else {
+        // User personel: Langsung masuk tanpa password / PIN
+        box.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+        const pinSec = document.getElementById('adminPinSection');
+        if(pinSec) pinSec.style.display = 'none';
+        saveSession(role);
+        enterApp(role);
+        toast(`Selamat datang, ${roleName(role)} 👋`);
+      }
     });
   });
 }
@@ -1172,34 +1254,35 @@ function selectedLoginRole(){
 function updateLoginHint(){
   const role = selectedLoginRole();
   const hint = document.getElementById('loginHint');
-  const pinBox = document.getElementById('loginPin');
-  hint.classList.remove('err'); hint.textContent='';
-  if(!role){ pinBox.disabled = true; pinBox.placeholder='Pilih akun dulu'; return; }
-  pinBox.disabled = false;
+  if(!hint) return;
+  hint.classList.remove('err');
   if(role==='admin'){
-    pinBox.placeholder = '••••';
-    hint.textContent = 'Masukkan PIN admin untuk melanjutkan.';
+    hint.textContent = 'Masukkan PIN admin (1234) untuk melanjutkan.';
   } else {
-    pinBox.placeholder = PIN_PERSONEL[role] ? '••••' : '(tidak wajib)';
-    hint.textContent = PIN_PERSONEL[role] ? 'Masukkan PIN personel.' : 'PIN tidak diwajibkan untuk akun personel.';
+    hint.textContent = '';
   }
 }
 function tryLogin(){
   const role = selectedLoginRole();
   const hint = document.getElementById('loginHint');
-  hint.classList.remove('err');
-  if(!role){ hint.textContent='Pilih akun dulu.'; hint.classList.add('err'); return; }
-  const pin = document.getElementById('loginPin').value.trim();
-  if(role==='admin' && pin!==PIN_ADMIN){
-    hint.textContent='PIN admin salah.'; hint.classList.add('err');
-    document.getElementById('loginPin').select(); return;
+  if(hint) hint.classList.remove('err');
+  if(!role || role!=='admin'){
+    if(hint){ hint.textContent='Pilih Administrator dulu.'; hint.classList.add('err'); }
+    return;
   }
-  if(role!=='admin' && PIN_PERSONEL[role] && pin!==PIN_PERSONEL[role]){
-    hint.textContent='PIN personel salah.'; hint.classList.add('err');
-    document.getElementById('loginPin').select(); return;
+  const pinBox = document.getElementById('loginPin');
+  const pin = pinBox ? pinBox.value.trim() : '';
+  if(pin!==PIN_ADMIN){
+    if(hint){
+      hint.textContent='PIN admin salah. Silakan coba lagi.';
+      hint.classList.add('err');
+    }
+    if(pinBox) pinBox.select();
+    return;
   }
-  saveSession(role);
-  enterApp(role);
+  saveSession('admin');
+  enterApp('admin');
+  toast('Login berhasil sebagai Administrator 👋');
 }
 function enterApp(role){
   currentRole = role;
@@ -1217,7 +1300,10 @@ function logout(){
   hideAdminPage();
   document.getElementById('userChipMenu').classList.remove('open');
   document.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
-  document.getElementById('loginPin').value='';
+  const pinSec = document.getElementById('adminPinSection');
+  if(pinSec) pinSec.style.display = 'none';
+  const pinBox = document.getElementById('loginPin');
+  if(pinBox) pinBox.value='';
   updateLoginHint();
   document.getElementById('appRoot').style.display = 'none';
   document.getElementById('loginScreen').classList.remove('hidden');
@@ -1250,12 +1336,27 @@ document.getElementById('menuSwitch').addEventListener('click', ()=>{
   document.getElementById('userChipMenu').classList.remove('open');
   document.getElementById('appRoot').style.display='none';
   document.getElementById('adminPage').style.display='none';
+  document.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+  const pinSec = document.getElementById('adminPinSection');
+  if(pinSec) pinSec.style.display = 'none';
+  const pinBox = document.getElementById('loginPin');
+  if(pinBox) pinBox.value = '';
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loginScreen').setAttribute('aria-hidden','false');
 });
 document.getElementById('menuLogout').addEventListener('click', logout);
 document.getElementById('loginBtn').addEventListener('click', tryLogin);
 document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+const btnCancelAdmin = document.getElementById('btnCancelAdminPin');
+if(btnCancelAdmin){
+  btnCancelAdmin.addEventListener('click', ()=>{
+    document.querySelectorAll('.login-role').forEach(x=>x.classList.remove('selected'));
+    const pinSec = document.getElementById('adminPinSection');
+    if(pinSec) pinSec.style.display = 'none';
+    const pinBox = document.getElementById('loginPin');
+    if(pinBox) pinBox.value = '';
+  });
+}
 
 /* =====================================================================
    UTIL
@@ -3983,7 +4084,7 @@ function buildScheduleBlockHtml(year, month){
 
   return `<div class="sched-block">
     <div class="sched-title">
-      <div class="t1">JADWAL DINAS SHIFT PENGELOLA DATABASE BMKG</div>
+      <div class="t1">JADWAL DINAS SHIFT</div>
       <div class="t2">DIREKTORAT DATA DAN KOMPUTASI</div>
       <div class="t3">${monthNames[month-1]} ${year}</div>
     </div>
@@ -4840,7 +4941,6 @@ function renderAll(){
 
 renderLoginRoles();
 updateLoginHint();
-document.getElementById('loginPin').disabled = true;
 
 (async function initApp(){
   await loadFromSupabase();   // tarik data terbaru dari Supabase (kalau tersedia) sebelum render
