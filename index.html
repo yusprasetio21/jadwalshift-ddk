@@ -211,6 +211,10 @@
   table.cal td.slot-off.weekend{ background-color:#AAB8C6; color:#0F172A; font-weight:700; }
   table.cal td.slot-PS.weekend{ background-color:#BEE3E1; }
   table.cal td.slot-M.weekend{ background-color:#CBC2E5; }
+  table.cal td.slot-kuning,
+  table.cal td.slot-kuning.weekend{ background-color:var(--kuning) !important; color:var(--kuning-ink) !important; font-weight:700; font-family:var(--mono); }
+  table.cal td.slot-cuti,
+  table.cal td.slot-cuti.weekend{ background-color:var(--red) !important; color:#fff !important; font-weight:700; font-family:var(--mono); }
   table.cal td.sel{ background-image:linear-gradient(var(--blue-tint), var(--blue-tint)); }
   table.cal .sel-l{ border-left:2px solid var(--blue); }
   table.cal .sel-r{ border-right:2px solid var(--blue); }
@@ -239,11 +243,13 @@
   .shift-opt.opt-lock.active{ border-color:var(--indigo); background:var(--indigo); color:#fff; }
 
   /* Slot Pending Status */
-  td.slot-cuti-pending{
+  td.slot-cuti-pending,
+  table.cal td.slot-cuti-pending.weekend{
     background-color:#FDF2F1 !important; color:var(--red) !important; font-weight:700; font-family:var(--mono);
     border:1.5px dashed var(--red) !important;
   }
-  td.slot-kuning-pending{
+  td.slot-kuning-pending,
+  table.cal td.slot-kuning-pending.weekend{
     background-color:#FEF9E7 !important; color:#7D5A06 !important; font-weight:700; font-family:var(--mono);
     border:1.5px dashed #C8990A !important;
   }
@@ -4842,10 +4848,11 @@ function buildFormalPrintHtml(y, m){
     for(let d=1; d<=days; d++){
       const dayData = sched.calendar[d-1];
       const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===idx && c.month===m && c.year===y && d>=c.start && d<=c.end);
+      const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===idx && k.month===m && k.year===y && d>=k.start && d<=k.end);
       const isPS = dayData.PS.includes(idx), isM = dayData.M.includes(idx);
       const merah = isTanggalMerah(y,m,d);
-      let label = onCuti ? '-' : (isPS ? 'PS' : (isM ? 'M' : '-'));
-      const cls = onCuti ? 'cuti' : (merah ? 'merah' : '');
+      let label = onCuti ? '-' : (onKuning ? 'K' : (isPS ? 'PS' : (isM ? 'M' : '-')));
+      const cls = onCuti ? 'cuti' : (onKuning ? 'kuning' : (merah ? 'merah' : ''));
       cells += `<td class="${cls}">${label}</td>`;
     }
     return `<tr><td class="no">${idx+1}</td><td class="nama">${esc(p.name)}</td>${cells}</tr>`;
@@ -4868,6 +4875,7 @@ function buildFormalPrintHtml(y, m){
   table.jadwal td.nama, table.jadwal th.nama{ text-align:left; white-space:nowrap; }
   table.jadwal th.merah, table.jadwal td.merah{ background:#C9C9C9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   table.jadwal td.cuti{ background:#FF0000 !important; color:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.jadwal td.kuning{ background:#F2C230 !important; color:#6B4E05 !important; font-weight:bold; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .keterangan{ margin-top:18px; font-size:13px; }
   .keterangan .judul{ font-weight:bold; margin-bottom:8px; }
   .ket-row{ display:flex; align-items:center; gap:10px; margin-bottom:7px; }
@@ -4875,6 +4883,7 @@ function buildFormalPrintHtml(y, m){
   .swatch{ width:28px; height:16px; display:inline-block; border:1px solid #888; vertical-align:middle; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .swatch.merah{ background:#C9C9C9; }
   .swatch.cuti{ background:#FF0000; }
+  .swatch.kuning{ background:#F2C230; }
   @media print{ .noprint{ display:none !important; } }
   .noprint{ position:fixed; top:10px; right:10px; }
   .noprint button{ font-family:Arial; font-size:13px; padding:8px 14px; border-radius:6px; border:1px solid #999; background:#0E5C6E; color:#fff; cursor:pointer; }
@@ -4902,6 +4911,7 @@ function buildFormalPrintHtml(y, m){
     <div class="ket-row"><span class="ket-label">-</span><span>= Lepas Dinas/Libur</span></div>
     <div class="ket-row"><span class="swatch merah"></span><span>= Tanggal Merah</span></div>
     <div class="ket-row"><span class="swatch cuti"></span><span>= Cuti</span></div>
+    <div class="ket-row"><span class="swatch kuning"></span><span>= Kuning (Keinginan Libur)</span></div>
   </div>
 </body></html>`;
 }
