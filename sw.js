@@ -1,7 +1,8 @@
-const CACHE_NAME = 'shift-ddk-v1';
+const CACHE_NAME = 'shift-ddk-v6';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './logika.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
