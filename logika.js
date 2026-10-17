@@ -559,14 +559,60 @@ const PANEL_META = {
   user_request: { icon:ICON.cuti, title:'Pengajuan Cuti / Kuning' }
 };
 const backdrop = document.getElementById('modalBackdrop');
+
+/* ---------- Preservasi Posisi Layar & Tabel Jadwal (No Screen Jumping) ---------- */
+let lastCalScrollLeft = null;
+let lastCalScrollTop = null;
+let lastWinScrollX = null;
+let lastWinScrollY = null;
+let lastScrollYM = null;
+
+function captureScrollState(){
+  const cal = document.getElementById('calWrap');
+  if(cal){
+    lastCalScrollLeft = cal.scrollLeft;
+    lastCalScrollTop = cal.scrollTop;
+  }
+  lastWinScrollX = (window.scrollX !== undefined) ? window.scrollX : (window.pageXOffset || 0);
+  lastWinScrollY = (window.scrollY !== undefined) ? window.scrollY : (window.pageYOffset || 0);
+  lastScrollYM = `${viewY}-${viewM}`;
+}
+
+function restoreScrollState(force){
+  if(!force && lastScrollYM && lastScrollYM !== `${viewY}-${viewM}`){
+    return;
+  }
+  const cal = document.getElementById('calWrap');
+  if(cal && lastCalScrollLeft !== null){
+    cal.scrollLeft = lastCalScrollLeft;
+    cal.scrollTop = lastCalScrollTop;
+  }
+  if(lastWinScrollX !== null && lastWinScrollY !== null){
+    window.scrollTo(lastWinScrollX, lastWinScrollY);
+  }
+}
+
+// Rekam posisi scroll halaman secara aktif saat user menjelajah
+window.addEventListener('scroll', () => {
+  if(!activePanel && lastScrollYM === `${viewY}-${viewM}`){
+    lastWinScrollX = (window.scrollX !== undefined) ? window.scrollX : (window.pageXOffset || 0);
+    lastWinScrollY = (window.scrollY !== undefined) ? window.scrollY : (window.pageYOffset || 0);
+  }
+}, { passive: true });
+
 function openModal(kind){
+  captureScrollState();
   activePanel = kind;
   updateNavHighlight();
   renderModal();
   backdrop.classList.add('open');
   backdrop.setAttribute('aria-hidden','false');
   document.body.style.overflow = 'hidden';
-  document.getElementById('modalCard').focus();
+  if(lastWinScrollX !== null && lastWinScrollY !== null){
+    window.scrollTo(lastWinScrollX, lastWinScrollY);
+  }
+  const mc = document.getElementById('modalCard');
+  if(mc && mc.focus) mc.focus({ preventScroll: true });
 }
 function closeModal(){
   activePanel = null;
@@ -574,6 +620,8 @@ function closeModal(){
   backdrop.setAttribute('aria-hidden','true');
   document.body.style.overflow = '';
   updateNavHighlight();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
 }
 function renderModal(){
   if(!activePanel) return;
@@ -2385,6 +2433,7 @@ function openManualEditModal(day, pid){
     cutiReason,
     kuningReason
   };
+  captureScrollState();
   openModal('edit_shift');
 }
 
@@ -2785,6 +2834,8 @@ async function saveManualEdit(){
 
   closeModal();
   renderScheduleArea();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
   updateNavBadges();
   if(document.getElementById('adminPage').style.display==='block') renderAdminPanel();
   toast(`Jadwal ${getPerson(pid).name} tanggal ${day} berhasil diperbarui` + replMsg + (isPreviewActive(year, month) ? ' (dalam mode pratinjau)' : '') + '.');
@@ -3318,6 +3369,14 @@ function fillScheduleBlock(year, month, result){
   document.getElementById('calWrap').innerHTML = `<table class="cal"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 
   const calEl = document.getElementById('calWrap');
+  if(calEl){
+    calEl.addEventListener('scroll', () => {
+      if(!activePanel && lastScrollYM === `${year}-${month}`){
+        lastCalScrollLeft = calEl.scrollLeft;
+        lastCalScrollTop = calEl.scrollTop;
+      }
+    }, { passive: true });
+  }
   const freeze = freezeBoundaryForMonth(year, month);
   const isDraftAdmin = isAdmin() && isPreviewActive(year, month);
 
@@ -3383,6 +3442,11 @@ function fillScheduleBlock(year, month, result){
   }
 }
 function renderScheduleArea(){
+  const curCal = document.getElementById('calWrap');
+  if(curCal && !activePanel && lastScrollYM === `${viewY}-${viewM}`){
+    lastCalScrollLeft = curCal.scrollLeft;
+    lastCalScrollTop = curCal.scrollTop;
+  }
   const area = document.getElementById('scheduleArea');
   const res = schedules[skey(viewY, viewM)];
   if(!res){
@@ -3432,9 +3496,9 @@ function renderScheduleArea(){
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><polyline points="20 6 9 17 4 12"/></svg>
             Simpan &amp; Publikasikan (Submit)
           </button>
-          <button type="button" class="btn-discard" onclick="cancelSchedulePreview(${viewY}, ${viewM})">
+          <button type="button" class="btn-discard" onclick="closeDraftManual(${viewY}, ${viewM})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            Batalkan Pratinjau
+            ✕ Tutup Draft (Tanpa Simpan)
           </button>
         </div>
       </div>`;
@@ -3442,6 +3506,7 @@ function renderScheduleArea(){
 
   area.innerHTML = previewBannerHtml + buildScheduleBlockHtml(viewY, viewM);
   fillScheduleBlock(viewY, viewM, res);
+  restoreScrollState();
 }
 function renderMonthTabs(){
   document.getElementById('yearLabel').textContent = viewY;
@@ -3451,11 +3516,31 @@ function renderMonthTabs(){
     const has = !!schedules[skey(viewY, m)];
     return `<button class="mtab ${m===viewM?'active':''}" role="tab" aria-selected="${m===viewM}" data-m="${m}">${n}${has?'<span class="dot" title="Jadwal sudah dibuat"></span>':''}</button>`;
   }).join('');
-  box.querySelectorAll('.mtab').forEach(b=> b.addEventListener('click', ()=>{ viewM = parseInt(b.dataset.m); renderAll(); }));
+  box.querySelectorAll('.mtab').forEach(b=> b.addEventListener('click', ()=>{
+    const targetM = parseInt(b.dataset.m);
+    if(viewM !== targetM){
+      lastCalScrollLeft = 0;
+      lastCalScrollTop = 0;
+      lastScrollYM = `${viewY}-${targetM}`;
+    }
+    viewM = targetM;
+    renderAll();
+  }));
   const act = box.querySelector('.mtab.active');
-  if(act && act.scrollIntoView) act.scrollIntoView({inline:'center', block:'nearest'});
+  if(act && box){
+    box.scrollLeft = Math.max(0, act.offsetLeft - (box.clientWidth - act.clientWidth) / 2);
+  }
 }
-selYear.addEventListener('change', ()=>{ viewY = parseInt(selYear.value); renderAll(); });
+selYear.addEventListener('change', ()=>{
+  const targetY = parseInt(selYear.value);
+  if(viewY !== targetY){
+    lastCalScrollLeft = 0;
+    lastCalScrollTop = 0;
+    lastScrollYM = `${targetY}-${viewM}`;
+  }
+  viewY = targetY;
+  renderAll();
+});
 
 /* =====================================================================
    PANEL ADMIN
@@ -4607,7 +4692,17 @@ function parkDraft(){ const st=previewScheduleState; if(!st) return; persistDraf
 window.cancelSchedulePreview=function(y,m){ if(!isPreviewActive(y,m)) return; parkDraft(); clearDraftStore(); renderAll(); toast('Draft dibuang. Kembali ke jadwal FINAL.'); };
 window.draftCheckpoint=function(){ const s=previewScheduleState; if(!s) return; s.checkpoint=makeSnapshot(s.year,s.month,'Titik simpan'); persistDraft(); renderAll(); toast('💾 Titik simpan dibuat.'); };
 window.draftToCheckpoint=async function(){ const s=previewScheduleState; if(!s||!s.checkpoint) return; pushUndo(makeSnapshot(s.year,s.month,'Sebelum ke titik simpan')); await applySnapshot(s.year,s.month,s.checkpoint); toast('↩ Kembali ke titik simpan.'); };
-window.draftDiscard=function(){ const s=previewScheduleState; if(s&&confirm('Buang SEMUA perubahan draft dan kembali ke jadwal FINAL?')) cancelSchedulePreview(s.year,s.month); };
+window.draftDiscard=function(){ const s=previewScheduleState; if(s&&confirm('Reset SEMUA perubahan draft dan kembali ke snapshot awal?')) cancelSchedulePreview(s.year,s.month); };
+window.closeDraftManual=function(y,m){
+  const s=previewScheduleState; if(!s) return;
+  y = y || s.year; m = m || s.month;
+  const nc = typeof cellDiffs === 'function' ? cellDiffs().length : 0;
+  const nl = typeof listRows === 'function' ? listRows().filter(r=>r.isNew).length : 0;
+  if(nc > 0 || nl > 0){
+    if(!confirm(`Ada ${nc} perubahan sel${nl?` & ${nl} pengajuan/lock`:''} yang belum disimpan.\n\nApakah Anda yakin ingin MENUTUP DRAFT TANPA MENYIMPAN?\nPerubahan baru akan dibuang dan kembali ke jadwal FINAL.`)) return;
+  }
+  cancelSchedulePreview(y,m);
+};
 
 function clearDraftStore(){ try{sessionStorage.removeItem(DK);}catch(e){} }
 function persistDraft(){
@@ -4666,6 +4761,7 @@ function wrapOp(name,ymOf,label,opts){
   window[name]=async function(...args){
     const ym=ymOf(...args); if(!ym) return orig.apply(this,args);
     const g=gate(ym.y,ym.m); if(g===false) return; if(g==='none') return orig.apply(this,args);
+    captureScrollState();
     const before=makeSnapshot(ym.y,ym.m,label(...args)), s0=sig(ym.y,ym.m);
     if(opts.pre) opts.pre(...args);
     const oc=window.confirm, ob=_noBal;
@@ -4673,7 +4769,10 @@ function wrapOp(name,ymOf,label,opts){
     try{ const r=orig.apply(this,args); if(r&&r.then) await r; } finally{ window.confirm=oc; _noBal=ob; _suppress=false; }
     if(previewScheduleState&&sig(ym.y,ym.m)!==s0){ pushUndo(before); persistDraft(); }
     else if(g==='new'&&previewScheduleState&&!previewScheduleState.history.undo.length){ previewScheduleState=null; clearDraftStore(); }
-    renderAll(); if(opts.arm) armForce(opts.arm(...args),label(...args));
+    renderAll();
+    restoreScrollState();
+    requestAnimationFrame(restoreScrollState);
+    if(opts.arm) armForce(opts.arm(...args),label(...args));
   };
 }
 function armForce(box,label){   // aksi yang baru jalan setelah centang "Tetap ajukan/kunci"
@@ -4722,9 +4821,48 @@ window.resetSchedule=function(y,m){   // reset = kosongkan di DRAFT; DB terhapus
 
 /* ---------- 6. Kunci navigasi & cetak saat draft ---------- */
 const mt=document.getElementById('monthTabs');
-if(mt) mt.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.mtab'); if(!b||!previewScheduleState) return;
-  if(!(previewScheduleState.year===viewY&&previewScheduleState.month===parseInt(b.dataset.m))){ e.stopImmediatePropagation(); toast('Submit atau batalkan draft dulu sebelum pindah bulan.'); } },true);
-selYear.addEventListener('change',e=>{ if(previewScheduleState){ e.stopImmediatePropagation(); selYear.value=viewY; toast('Submit atau batalkan draft dulu.'); } },true);
+if(mt) mt.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('.mtab'); if(!b||!previewScheduleState) return;
+  const targetM=parseInt(b.dataset.m);
+  if(previewScheduleState.year===viewY && previewScheduleState.month===targetM) return;
+  e.stopImmediatePropagation();
+  const nc = typeof cellDiffs === 'function' ? cellDiffs().length : 0;
+  const nl = typeof listRows === 'function' ? listRows().filter(r=>r.isNew).length : 0;
+  if(nc === 0 && nl === 0){
+    cancelSchedulePreview(previewScheduleState.year, previewScheduleState.month);
+    viewM = targetM;
+    renderAll();
+  } else {
+    if(confirm(`Mode draft di bulan ${monthNames[previewScheduleState.month-1]} ${previewScheduleState.year} belum disimpan.\n\nTutup draft tanpa menyimpan dan pindah ke bulan ${monthNames[targetM-1]}?`)){
+      cancelSchedulePreview(previewScheduleState.year, previewScheduleState.month);
+      viewM = targetM;
+      renderAll();
+    }
+  }
+},true);
+selYear.addEventListener('change',e=>{
+  if(previewScheduleState){
+    const targetY=parseInt(selYear.value);
+    if(targetY !== previewScheduleState.year){
+      e.stopImmediatePropagation();
+      const nc = typeof cellDiffs === 'function' ? cellDiffs().length : 0;
+      const nl = typeof listRows === 'function' ? listRows().filter(r=>r.isNew).length : 0;
+      if(nc === 0 && nl === 0){
+        cancelSchedulePreview(previewScheduleState.year, previewScheduleState.month);
+        viewY = targetY;
+        renderAll();
+      } else {
+        if(confirm(`Mode draft di ${monthNames[previewScheduleState.month-1]} ${previewScheduleState.year} belum disimpan.\n\nTutup draft tanpa menyimpan dan pindah ke tahun ${targetY}?`)){
+          cancelSchedulePreview(previewScheduleState.year, previewScheduleState.month);
+          viewY = targetY;
+          renderAll();
+        } else {
+          selYear.value = viewY;
+        }
+      }
+    }
+  }
+},true);
 { const o=window.printSchedule; window.printSchedule=function(y,m){
     if(previewScheduleState&&!(previewScheduleState.year===y&&previewScheduleState.month===m)){ toast('Submit atau batalkan draft dulu sebelum mencetak bulan lain.'); return; } o(y,m); }; }
 
@@ -4818,7 +4956,8 @@ function decorate(){
     row.classList.add('is-draft-row');
     row.insertAdjacentHTML('beforeend',`<span class="pb-tag">✏️ DRAFT</span><span class="pb-tag" style="background:#0E5C6E;color:#fff;">🔓 Tanggal Lewat Terbuka</span><span class="pb-count">${nc} sel${nl?` · ${nl} pengajuan`:''}</span><span class="pb-legend">${legendHtml()}</span>
       <span class="pb-actions">
-        <button type="button" class="pb-btn pb-discard" title="Buang SEMUA perubahan draft dan kembali ke jadwal FINAL" onclick="draftDiscard()">Kembali ke awal</button>
+        <button type="button" class="pb-btn pb-discard" title="Reset semua perubahan draft kembali ke snapshot awal" onclick="draftDiscard()">Kembali ke awal</button>
+        <button type="button" class="pb-btn pb-close" title="Tutup mode draft dan keluar tanpa menyimpan ke database" onclick="closeDraftManual(${y},${m})">✕ Tutup Draft</button>
         <button type="button" class="pb-btn pb-submit" onclick="commitSchedulePreview(${y},${m})">✔ Submit</button>
       </span>`);
     // pindahkan tombol Undo ke grup tombol kanan, tepat sebelum "Kembali ke awal"
@@ -4827,7 +4966,16 @@ function decorate(){
   }
   const blk=document.querySelector('#scheduleArea .sched-block'); if(blk){ const p=document.createElement('div'); p.id='draftPanel'; blk.appendChild(p); renderDraftPanel(); }
 }
-{ const o=window.renderScheduleArea; window.renderScheduleArea=function(){ o(); decorate(); }; }
+{
+  const o = window.renderScheduleArea;
+  window.renderScheduleArea = function(){
+    captureScrollState();
+    o();
+    decorate();
+    restoreScrollState();
+    requestAnimationFrame(restoreScrollState);
+  };
+}
 function updateDraftBar(){
   const bar=document.getElementById('draftBar'); if(!bar) return;
   const st=previewScheduleState; document.body.classList.toggle('is-draft',!!st&&isAdmin());
@@ -4836,8 +4984,19 @@ function updateDraftBar(){
   bar.style.display='none'; return;
   bar.innerHTML=`<span>✏️ <b>DRAFT ${monthNames[st.month-1]} ${st.year}</b> · ${nc} sel berubah${nl?` · ${nl} pengajuan/lock`:''} · belum disimpan</span>
     <button class="ok-btn" onclick="commitSchedulePreview(${st.year},${st.month})">Submit ke database</button>
+    <button class="ghost" onclick="closeDraftManual(${st.year},${st.month})" style="color:#475569;border-color:#94A3B8">✕ Tutup Draft</button>
     <button class="ghost" onclick="draftDiscard()" style="color:#B91C1C;border-color:#F87171">Kembali ke awal</button>`;
 }
-{ const o=window.renderAll; window.renderAll=function(){ o(); updateDraftBar(); }; }
+{
+  const o = window.renderAll;
+  window.renderAll = function(){
+    captureScrollState();
+    o();
+    updateDraftBar();
+    restoreScrollState();
+    requestAnimationFrame(restoreScrollState);
+    setTimeout(restoreScrollState, 40);
+  };
+}
 updateDraftBar();
 })();
