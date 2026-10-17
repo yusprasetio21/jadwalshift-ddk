@@ -205,7 +205,25 @@
   td.slot-cuti{ background-color:var(--red); color:#fff; font-weight:700; font-family:var(--mono); }
   td.slot-kuning{ background-color:var(--kuning); color:var(--kuning-ink); font-weight:700; font-family:var(--mono); }
   td.slot-swap{ background-color:#D7ECEA; color:#0F6B5C; font-weight:700; font-family:var(--mono); }
-  td.locked{ outline:2px solid var(--indigo); outline-offset:-2px; }
+  /* Lock Khusus / Admin Lock — Versi Biru Semula (var(--blue) #1F5FBF) */
+  td.locked,
+  td.slot-lock,
+  table.cal td.locked,
+  table.cal td.slot-lock,
+  table.cal td.slot-PS.locked,
+  table.cal td.slot-M.locked,
+  table.cal td.locked.weekend,
+  table.cal td.locked.sel,
+  table.cal td.slot-lock.weekend,
+  table.cal td.slot-lock.sel{
+    background-color:var(--blue) !important;
+    background-image:none !important;
+    color:#fff !important;
+    font-weight:700 !important;
+    font-family:var(--mono) !important;
+    outline:2px solid var(--blue-dark) !important;
+    outline-offset:-2px !important;
+  }
   td.swapped{ outline:2px dashed var(--green); outline-offset:-2px; }
   td.cuti-replacement{ outline:2.5px dashed var(--red); outline-offset:-2px; position:relative; }
   td.cuti-replacement::after{ content:''; position:absolute; top:2px; right:2px; width:5px; height:5px; background-color:var(--red); border-radius:50%; pointer-events:none; }
@@ -226,6 +244,7 @@
   table.cal td.slot-kuning.weekend{ background-color:var(--kuning) !important; color:var(--kuning-ink) !important; font-weight:700; font-family:var(--mono); }
   table.cal td.slot-cuti,
   table.cal td.slot-cuti.weekend{ background-color:var(--red) !important; color:#fff !important; font-weight:700; font-family:var(--mono); }
+
   table.cal td.sel{ background-image:linear-gradient(var(--blue-tint), var(--blue-tint)); }
   table.cal .sel-l{ border-left:2px solid var(--blue); }
   table.cal .sel-r{ border-right:2px solid var(--blue); }
@@ -251,7 +270,9 @@
   .shift-opt.opt-off.active{ border-color:var(--ink-soft); background:#5A6B7E; color:#fff; }
   .shift-opt.opt-cuti.active{ border-color:var(--red); background:var(--red); color:#fff; }
   .shift-opt.opt-kuning.active{ border-color:#D8A61E; background:var(--kuning); color:var(--kuning-ink); }
-  .shift-opt.opt-lock.active{ border-color:var(--indigo); background:var(--indigo); color:#fff; }
+  .shift-opt.opt-lock{ border-color:#B9D1EA; background:#F0F5FA; color:var(--blue); }
+  .shift-opt.opt-lock:hover{ border-color:var(--blue); background:#E4EFF9; color:var(--blue-dark); }
+  .shift-opt.opt-lock.active{ border-color:var(--blue-dark) !important; background:var(--blue) !important; color:#fff !important; font-weight:700 !important; box-shadow:0 2px 10px rgba(31,95,191,.4) !important; }
 
   /* Slot Pending Status */
   td.slot-cuti-pending,
@@ -828,7 +849,7 @@
     .calwrap{ max-height:none; overflow:visible; border:none; }
     table.cal{ font-size:10px; }
     table.cal thead th{ background:#0A4552 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    td.slot-PS, td.slot-M, td.slot-cuti, td.slot-kuning, td.slot-swap, td.cuti-replacement, td.kuning-replacement{
+    td.slot-PS, td.slot-M, td.slot-cuti, td.slot-kuning, td.slot-swap, td.cuti-replacement, td.kuning-replacement, td.locked, td.slot-lock{
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
     .sched-title{ page-break-after:avoid; }
@@ -1170,6 +1191,6 @@ table.cal td.flash{animation:flashc .45s 4;outline:3px solid #E8590C;outline-off
 <div class="toast" id="toast"></div>
 <div id="draftBar" role="status"></div>
 
-<script src="logika.js"></script>
+<script src="logika.js?v=10"></script>
 </body>
 </html>

@@ -498,6 +498,13 @@ function tomorrowDateStr(y, m){
 
 function applyDateBounds(inputEl){
   if(!inputEl) return;
+  if(isAdmin() && isPreviewActive(viewY, viewM)){
+    inputEl.disabled = false;
+    inputEl.min = `${viewY}-${pad2(viewM)}-01`;
+    inputEl.max = monthLastStr();
+    inputEl.title = 'Mode Draft aktif: Kunci tanggal lewat dibuka untuk Admin.';
+    return;
+  }
   const min = tomorrowDateStr(viewY, viewM);
   const max = monthLastStr();
   if(!min || min > max){
@@ -672,13 +679,16 @@ function addLock(){
   if(!date){ warnBox.innerHTML='Pilih tanggal yang valid di dalam bulan yang sedang dibuka.'; warnBox.classList.add('show'); return; }
 
   const rt = realToday();
-  if(year < rt.y || (year===rt.y && month < rt.m)){
-    warnBox.innerHTML='⚠ Bulan ini sudah lewat, jadwal tidak dapat diubah.';
-    warnBox.classList.add('show'); return;
-  }
-  if(year === rt.y && month === rt.m && date <= rt.d){
-    warnBox.innerHTML=`⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Penguncian hanya boleh untuk tanggal mulai besok (tgl ${rt.d + 1} s/d ${daysInMonth()}).`;
-    warnBox.classList.add('show'); return;
+  const isDraftAdmin = isAdmin() && isPreviewActive(year, month);
+  if(!isDraftAdmin){
+    if(year < rt.y || (year===rt.y && month < rt.m)){
+      warnBox.innerHTML='⚠ Bulan ini sudah lewat, jadwal tidak dapat diubah.';
+      warnBox.classList.add('show'); return;
+    }
+    if(year === rt.y && month === rt.m && date <= rt.d){
+      warnBox.innerHTML=`⚠ Jadwal tanggal aktif (tgl ${rt.d}) dan tanggal sebelumnya sudah fix tidak boleh diubah. Penguncian hanya boleh untuk tanggal mulai besok (tgl ${rt.d + 1} s/d ${daysInMonth()}).`;
+      warnBox.classList.add('show'); return;
+    }
   }
 
   const existing = lockedList.filter(l=>l.date===date && l.slot===slot && l.month===month && l.year===year);
@@ -1303,6 +1313,9 @@ function removeReq(kind, id){
    SCHEDULE ENGINE
    ===================================================================== */
 function freezeBoundaryForMonth(year, month){
+  // Khusus Admin pada mode Draft / Pratinjau: kunci tanggal masa lalu dibuka sepenuhnya
+  if(isAdmin() && isPreviewActive(year, month)) return 0;
+
   // Tanggal yang sudah lewat (termasuk hari ini) tidak boleh berubah lagi,
   // walaupun ada perubahan cuti/kuning/lock/swap.
   const rt = realToday();
@@ -1319,7 +1332,10 @@ function computeCell(day, pid, dayEntry, month, year){
   const swappedOut = swapList.some(s=>s.status==='approved' && s.requesterId===pid && s.month===month && s.year===year && s.date===day);
   const isPS = dayEntry && dayEntry.PS && dayEntry.PS.includes(pid);
   const isM = dayEntry && dayEntry.M && dayEntry.M.includes(pid);
-  const locked = (isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || (isM && dayEntry.lockedM && dayEntry.lockedM.includes(pid));
+  const lockItem = lockedList.find(l=>l.personnelId===pid && l.date===day && l.month===month && l.year===year);
+  const locked = (isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || 
+                 (isM && dayEntry.lockedM && dayEntry.lockedM.includes(pid)) || 
+                 Boolean(lockItem);
   const swappedIn = (isPS && dayEntry.swappedPS && dayEntry.swappedPS.includes(pid)) || (isM && dayEntry.swappedM && dayEntry.swappedM.includes(pid));
 
   const currentSlot = isPS ? 'PS' : (isM ? 'M' : null);
@@ -1337,7 +1353,7 @@ function computeCell(day, pid, dayEntry, month, year){
   if(isPS){
     let cls = 'slot-PS' + (locked ? ' locked' : '') + (swappedIn ? ' swapped' : '') + (isCutiRepl ? replCls : '');
     let title = 'Pagi Siang';
-    if(locked) title = 'PS (terkunci admin)';
+    if(locked) title = 'PS (terkunci admin / lock khusus)';
     else if(swappedIn) title = 'PS (menggantikan, tukar dinas)';
     else if(isCutiRepl) title = `PS (menggantikan ${replacedPerson ? replacedPerson.name : 'rekan'} yang ${replType})`;
     return { cls, label: 'PS', title };
@@ -1345,10 +1361,14 @@ function computeCell(day, pid, dayEntry, month, year){
   if(isM){
     let cls = 'slot-M' + (locked ? ' locked' : '') + (swappedIn ? ' swapped' : '') + (isCutiRepl ? replCls : '');
     let title = 'Malam';
-    if(locked) title = 'M (terkunci admin)';
+    if(locked) title = 'M (terkunci admin / lock khusus)';
     else if(swappedIn) title = 'M (menggantikan, tukar dinas)';
     else if(isCutiRepl) title = `M (menggantikan ${replacedPerson ? replacedPerson.name : 'rekan'} yang ${replType})`;
     return { cls, label: 'M', title };
+  }
+  if(lockItem && !isPS && !isM){
+    const lSlot = lockItem.slot || 'PS';
+    return { cls: (lSlot === 'M' ? 'slot-M' : 'slot-PS') + ' locked', label: lSlot, title: `${lSlot} (terkunci admin / lock khusus: ${lockItem.reason || 'Permintaan Masuk'})` };
   }
   if(dayEntry && dayEntry.L1 && dayEntry.L1.includes(pid)) return {cls:'slot-off', label:'–', title:'Libur-1 (baru pulang malam)'};
   if(dayEntry && dayEntry.L2 && dayEntry.L2.includes(pid)) return {cls:'slot-off', label:'–', title:'Libur-2 (libur penuh)'};
@@ -2318,7 +2338,8 @@ function openManualEditModal(day, pid){
   const sched = schedules[skey(viewY, viewM)];
   if(!sched) return;
   const freeze = freezeBoundaryForMonth(viewY, viewM);
-  if(day <= freeze){
+  const isDraftAdmin = isAdmin() && isPreviewActive(viewY, viewM);
+  if(day <= freeze && !isDraftAdmin){
     toast(`Tanggal ${day} sudah berjalan (fix) dan tidak dapat diubah.`);
     return;
   }
@@ -2328,6 +2349,7 @@ function openManualEditModal(day, pid){
   const onCuti = cutiList.find(c=>c.status==='approved' && c.personnelId===pid && c.month===viewM && c.year===viewY && day>=c.start && day<=c.end);
   const onKuning = kuningList.find(k=>k.status==='approved' && k.personnelId===pid && k.month===viewM && k.year===viewY && day>=k.start && day<=k.end);
   const lockItem = lockedList.find(l=>l.personnelId===pid && l.date===day && l.month===viewM && l.year===viewY);
+  const isLockedInEntry = (isPS && entry.lockedPS && entry.lockedPS.includes(pid)) || (isM && entry.lockedM && entry.lockedM.includes(pid));
 
   let initialMode = 'OFF';
   let lockSlot = 'PS';
@@ -2335,10 +2357,10 @@ function openManualEditModal(day, pid){
   let cutiReason = 'Cuti tahunan';
   let kuningReason = 'Keinginan libur';
 
-  if(lockItem){
+  if(lockItem || isLockedInEntry){
     initialMode = 'LOCK';
-    lockSlot = lockItem.slot || (isM ? 'M' : 'PS');
-    lockReason = lockItem.reason || lockReason;
+    lockSlot = (lockItem && lockItem.slot) || (isM ? 'M' : 'PS');
+    lockReason = (lockItem && lockItem.reason) || lockReason;
   } else if(onCuti){
     initialMode = 'CUTI';
     cutiReason = onCuti.reason || cutiReason;
@@ -2397,6 +2419,16 @@ function renderManualEditPanel(area){
           <div id="manualCurrentBadge" style="font-family:var(--mono); font-weight:700; font-size:14px; color:var(--navy);">${modeLabels[selectedMode] || selectedMode}</div>
         </div>
       </div>
+      ${(()=>{
+        const rt = realToday();
+        const isPast = (year < rt.y) || (year === rt.y && month < rt.m) || (year === rt.y && month === rt.m && day <= rt.d);
+        if(isPast && isAdmin() && isPreviewActive(year, month)){
+          return `<div style="background:#E6F4EA; border:1px solid #CEEAD6; color:#137333; font-size:12px; padding:7px 11px; border-radius:6px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+            <span>🔓 <b>Mode Draft:</b> Kunci tanggal lewat dibuka khusus Admin. Anda dapat mengubah shift tanggal ini sebelum submit.</span>
+          </div>`;
+        }
+        return '';
+      })()}
 
       <div class="formrow">
         <label style="font-weight:700;">Pilih Status / Jenis Shift:</label>
@@ -2411,8 +2443,8 @@ function renderManualEditPanel(area){
       </div>
 
       <!-- Detail Box untuk Lock Khusus -->
-      <div id="lockConfigBox" style="${selectedMode==='LOCK'?'':'display:none;'} background:#F0F4F8; border:1px solid #C8D8E8; border-radius:8px; padding:12px; margin:10px 0;">
-        <div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">🔒 Pengaturan Lock Khusus (Permintaan Masuk)</div>
+      <div id="lockConfigBox" style="${selectedMode==='LOCK'?'':'display:none;'} background:#F0F5FA; border:1.5px solid #C8D8E8; border-radius:8px; padding:12px; margin:10px 0;">
+        <div style="font-size:12.5px; font-weight:700; color:var(--blue); margin-bottom:8px;">🔒 Pengaturan Lock Khusus (Permintaan Masuk)</div>
         <div class="formrow" style="margin-bottom:8px;">
           <label style="font-size:12px; font-weight:600;">Pilih Slot Dinas:</label>
           <div style="display:flex; gap:16px; margin-top:3px;">
@@ -2665,6 +2697,8 @@ async function saveManualEdit(){
       dbInsert('kuning_requests', row);
     }
   } else if(selectedMode === 'LOCK'){
+    dEntry.lockedPS = dEntry.lockedPS || [];
+    dEntry.lockedM = dEntry.lockedM || [];
     if(lockSlot === 'PS'){
       dEntry.PS.push(pid);
       dEntry.lockedPS.push(pid);
@@ -3167,6 +3201,7 @@ function cellInfo(day, personnelId, result, month, year){
   return computeCell(day, personnelId, d, month, year);
 }
 function selectionEnd(year, month, days){
+  if(isAdmin() && isPreviewActive(year, month)) return 0;
   const rt = realToday();
   if(year<rt.y || (year===rt.y && month<rt.m)) return days;
   if(year===rt.y && month===rt.m) return Math.min(rt.d, days);
@@ -3188,10 +3223,14 @@ function buildScheduleBlockHtml(year, month){
   const _nm = _last ? String(_last.actionName||'perubahan') : '';
   const _short = _nm.length > 30 ? _nm.slice(0,29)+'…' : _nm;
   const adminUndoNotice = uAvail ? ` <span style="display:inline-flex; align-items:center; gap:6px;"><button type="button" class="small ghost" title="${esc('Batalkan 1 langkah terakhir: '+_nm+(_h.undo.length>1?' ('+_h.undo.length+' langkah tersedia)':''))}" onclick="undoSchedule(${year}, ${month})" style="background:#fff; border-color:#0C2B47; color:#0C2B47; font-weight:700; padding:2px 8px; font-size:11px; cursor:pointer;">↶ Undo: <span style="font-weight:500;">${esc(_short)}</span></button></span>` : '';
+  const adminDraftBtn = (isAdmin() && !isPreviewActive(year, month))
+    ? ` <button type="button" class="small ghost" onclick="startDraftManual(${year}, ${month})" style="background:#fff; border-color:var(--teal); color:var(--teal); font-weight:700; padding:2px 8px; font-size:11px; cursor:pointer;" title="Buka mode draft untuk mengedit tanggal mana saja termasuk tanggal yang sudah lewat">✏️ Buka Mode Draft (Buka Kunci Tanggal)</button>`
+    : '';
   const adminTip = isAdmin() ? `
     <div class="admin-tip-row" style="background:#EBF2F7; border:1px solid #C8D9E6; border-radius:8px; padding:9px 14px; font-size:12px; color:var(--navy); display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex:none;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <b>Mode Admin</b>
+      ${adminDraftBtn}
       ${adminUndoNotice}
     </div>` : '';
   const myPid = currentPersonnelId();
@@ -3226,7 +3265,7 @@ function buildScheduleBlockHtml(year, month){
       <span><i style="background:#FDF2F1;border:1.5px dashed var(--red)"></i> Cuti (menunggu admin)</span>
       <span><i style="background:var(--kuning)"></i> Kuning</span>
       <span><i style="background:#FEF9E7;border:1.5px dashed #C8990A"></i> Kuning (menunggu admin)</span>
-      <span><i style="background:#fff;border:2px solid var(--indigo)"></i> Terkunci admin</span>
+      <span><i style="background:var(--blue);border:1.5px solid var(--blue-dark)"></i> Lock jadwal / khusus</span>
       <span><i style="background:#D7ECEA;border:1px solid #0F6B5C"></i> Ditukar (digantikan)</span>
       <span><i style="background:#fff;border:2px dashed var(--green)"></i> Pengganti (tukar dinas)</span>
       <span><i style="background:#fff;border:2.5px dashed var(--red);position:relative;display:inline-block;"><span style="position:absolute;top:1px;right:1px;width:4px;height:4px;background:var(--red);border-radius:50%;display:block;"></span></i> Pengganti (karena cuti)</span>
@@ -3280,6 +3319,7 @@ function fillScheduleBlock(year, month, result){
 
   const calEl = document.getElementById('calWrap');
   const freeze = freezeBoundaryForMonth(year, month);
+  const isDraftAdmin = isAdmin() && isPreviewActive(year, month);
 
   if(isAdmin()){
     const tbl = calEl.querySelector('table.cal');
@@ -3287,10 +3327,20 @@ function fillScheduleBlock(year, month, result){
     calEl.querySelectorAll('td[data-day]').forEach(td => {
       const d = parseInt(td.dataset.day);
       const pid = parseInt(td.dataset.pid);
-      if(d > freeze){
+      if(isDraftAdmin || d > freeze){
         td.classList.add('cell-clickable');
         td.title = (td.title ? td.title + ' · ' : '') + 'Klik untuk edit manual (Admin)';
         td.addEventListener('click', () => openManualEditModal(d, pid));
+      } else {
+        // Tanggal lewat saat belum di mode draft: klik untuk mulai mode draft dan buka edit
+        td.addEventListener('click', () => {
+          if(confirm(`Tanggal ${d} sudah lewat/aktif (terkunci). Apakah Anda ingin membuka Mode Draft untuk mengedit tanggal ini?`)){
+            startDraft(year, month, `Edit manual tanggal ${d}`);
+            persistDraft();
+            renderAll();
+            openManualEditModal(d, pid);
+          }
+        });
       }
     });
   } else if(isUserRole() && myPid !== null){
@@ -4148,10 +4198,11 @@ function renderAdminLockList(){
   const box = document.getElementById('adminLockList');
   if(!box) return;
   const rt = realToday();
+  const isDraftAdmin = isAdmin() && isPreviewActive(viewY, viewM);
   const list = lockedList.slice().sort((a,b)=> a.month-b.month || a.date-b.date);
   box.innerHTML = list.length ? list.map(l=>{
     const p = personnel[l.personnelId];
-    const isPastOrActive = (l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d);
+    const isPastOrActive = !isDraftAdmin && ((l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d));
     const actionHtml = isPastOrActive
       ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
       : `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
@@ -4297,9 +4348,12 @@ function buildFormalPrintHtml(y, m){
       const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===idx && c.month===m && c.year===y && d>=c.start && d<=c.end);
       const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===idx && k.month===m && k.year===y && d>=k.start && d<=k.end);
       const isPS = dayData.PS.includes(idx), isM = dayData.M.includes(idx);
+      const isLocked = (isPS && dayData.lockedPS && dayData.lockedPS.includes(idx)) ||
+                       (isM && dayData.lockedM && dayData.lockedM.includes(idx)) ||
+                       lockedList.some(l => l.personnelId === idx && l.date === d && l.month === m && l.year === y);
       const merah = isTanggalMerah(y,m,d);
       let label = onCuti ? '-' : (onKuning ? 'K' : (isPS ? 'PS' : (isM ? 'M' : '-')));
-      const cls = onCuti ? 'cuti' : (onKuning ? 'kuning' : (merah ? 'merah' : ''));
+      const cls = onCuti ? 'cuti' : (onKuning ? 'kuning' : (isLocked ? 'locked' : (merah ? 'merah' : '')));
       cells += `<td class="${cls}">${label}</td>`;
     }
     return `<tr><td class="no">${idx+1}</td><td class="nama">${esc(p.name)}</td>${cells}</tr>`;
@@ -4323,6 +4377,7 @@ function buildFormalPrintHtml(y, m){
   table.jadwal th.merah, table.jadwal td.merah{ background:#C9C9C9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   table.jadwal td.cuti{ background:#FF0000 !important; color:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   table.jadwal td.kuning{ background:#F2C230 !important; color:#6B4E05 !important; font-weight:bold; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  table.jadwal td.locked{ background:#1F5FBF !important; color:#fff !important; font-weight:bold; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .keterangan{ margin-top:18px; font-size:13px; }
   .keterangan .judul{ font-weight:bold; margin-bottom:8px; }
   .ket-row{ display:flex; align-items:center; gap:10px; margin-bottom:7px; }
@@ -4331,6 +4386,7 @@ function buildFormalPrintHtml(y, m){
   .swatch.merah{ background:#C9C9C9; }
   .swatch.cuti{ background:#FF0000; }
   .swatch.kuning{ background:#F2C230; }
+  .swatch.locked{ background:#1F5FBF; }
   @media print{ .noprint{ display:none !important; } }
   .noprint{ position:fixed; top:10px; right:10px; }
   .noprint button{ font-family:Arial; font-size:13px; padding:8px 14px; border-radius:6px; border:1px solid #999; background:#0E5C6E; color:#fff; cursor:pointer; }
@@ -4359,6 +4415,8 @@ function buildFormalPrintHtml(y, m){
     <div class="ket-row"><span class="swatch merah"></span><span>= Tanggal Merah</span></div>
     <div class="ket-row"><span class="swatch cuti"></span><span>= Cuti</span></div>
     <div class="ket-row"><span class="swatch kuning"></span><span>= Kuning (Keinginan Libur)</span></div>
+    <div class="ket-row"><span class="swatch locked"></span><span>= Lock Jadwal / Khusus</span></div>
+  </div>
   </div>
 </body></html>`;
 }
@@ -4512,6 +4570,20 @@ window.enterSchedulePreview=function(y,m,d,desc){
   if(isPreviewActive(y,m)) pushUndo(makeSnapshot(y,m,'Generate ulang (draft)')); else startDraft(y,m,desc);
   previewScheduleState.sched=d; schedules[skey(y,m)]=d; persistDraft(); renderAll();
   toast('📌 Mode DRAFT: perubahan belum masuk database sampai Anda Submit.');
+};
+window.startDraftManual=function(y,m){
+  y = y || viewY; m = m || viewM;
+  if(!isAdmin()) return;
+  if(previewScheduleState && !isPreviewActive(y,m)){
+    toast(`Submit atau batalkan draft ${monthNames[previewScheduleState.month-1]} dulu.`);
+    return;
+  }
+  if(!previewScheduleState){
+    startDraft(y,m,`Edit manual jadwal ${monthNames[m-1]} ${y}`);
+    persistDraft();
+    renderAll();
+    toast(`✏️ Mode Draft aktif: Kunci tanggal lewat dibuka untuk Admin.`);
+  }
 };
 window.commitSchedulePreview=async function(y,m){
   if(!isPreviewActive(y,m)) return;
@@ -4682,7 +4754,7 @@ function cellKind(i){ const c=i.cls||'';
   if(/slot-cuti/.test(c)) return 'cuti'; if(/slot-kuning/.test(c)) return 'kuning';
   if(/slot-swap|swapped/.test(c)) return 'swap'; if(/locked/.test(c)) return 'lock'; return 'shift'; }
 const KIND_LABEL={shift:'Shift/libur manual',cuti:'Cuti',kuning:'Kuning',lock:'Lock admin',swap:'Tukar dinas'};
-const KIND_COLOR={shift:'#E8590C',cuti:'#C2255C',kuning:'#0B7285',lock:'#364FC7',swap:'#2B8A3E'};
+const KIND_COLOR={shift:'#E8590C',cuti:'#C2255C',kuning:'#0B7285',lock:'#1F5FBF',swap:'#2B8A3E'};
 function cellDiffs(){
   const st=previewScheduleState,out=[]; if(!st||!st.originalSched) return out;
   const s=schedules[skey(st.year,st.month)]; if(!s) return out;
@@ -4744,7 +4816,7 @@ function decorate(){
   if(row){
     const nc=cellDiffs().length,nl=listRows().filter(r=>r.isNew).length;
     row.classList.add('is-draft-row');
-    row.insertAdjacentHTML('beforeend',`<span class="pb-tag">✏️ DRAFT</span><span class="pb-count">${nc} sel${nl?` · ${nl} pengajuan`:''}</span><span class="pb-legend">${legendHtml()}</span>
+    row.insertAdjacentHTML('beforeend',`<span class="pb-tag">✏️ DRAFT</span><span class="pb-tag" style="background:#0E5C6E;color:#fff;">🔓 Tanggal Lewat Terbuka</span><span class="pb-count">${nc} sel${nl?` · ${nl} pengajuan`:''}</span><span class="pb-legend">${legendHtml()}</span>
       <span class="pb-actions">
         <button type="button" class="pb-btn pb-discard" title="Buang SEMUA perubahan draft dan kembali ke jadwal FINAL" onclick="draftDiscard()">Kembali ke awal</button>
         <button type="button" class="pb-btn pb-submit" onclick="commitSchedulePreview(${y},${m})">✔ Submit</button>
