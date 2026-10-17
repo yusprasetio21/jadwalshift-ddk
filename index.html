@@ -390,12 +390,18 @@
   /* User Modal Option Cards */
   .user-req-toggle{
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:repeat(2, 1fr);
     gap:10px;
     margin:10px 0 14px;
   }
+  @media(min-width:500px){
+    .user-req-toggle{
+      grid-template-columns:repeat(4, 1fr);
+      gap:8px;
+    }
+  }
   .user-opt-btn{
-    padding:16px 12px;
+    padding:14px 8px;
     border-radius:12px;
     border:2px solid var(--line);
     background:#fff;
@@ -424,16 +430,26 @@
     background:#FEF9E7;
     box-shadow:0 0 0 3px rgba(125,90,6,.15);
   }
+  .user-opt-btn.active.opt-swap{
+    border-color:#0284C7;
+    background:#F0F9FF;
+    box-shadow:0 0 0 3px rgba(2,132,199,.15);
+  }
+  .user-opt-btn.active.opt-lock{
+    border-color:var(--blue);
+    background:#EFF6FF;
+    box-shadow:0 0 0 3px rgba(31,95,191,.15);
+  }
   .user-opt-btn .u-icon{
-    font-size:26px;
+    font-size:24px;
     line-height:1;
   }
   .user-opt-btn .u-title{
-    font-size:14px;
+    font-size:13px;
     font-weight:700;
   }
   .user-opt-btn .u-sub{
-    font-size:11px;
+    font-size:10.5px;
     color:var(--ink-soft);
   }
 
@@ -968,7 +984,24 @@ table.cal td.flash{animation:flashc .45s 4;outline:3px solid #E8590C;outline-off
 #draftPanel .dp-new{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:99px;padding:1px 7px}
 #draftBar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:90;background:#FFFBEB;border:1.5px solid #F59E0B;border-radius:14px;padding:9px 14px;display:none;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:96vw;font-size:12.5px;color:#78350F}
 #draftBar button{padding:7px 12px;font-size:12px}
-@media print{#draftBar,#draftPanel,.preview-banner,.st-chip.draft{display:none!important}td.chg::before,.swn{display:none!important}body.is-draft .calwrap{border:none;background-image:none}}
+#userDraftBar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:90;background:#F0F9FF;border:1.5px solid #0284C7;border-radius:14px;padding:10px 16px;display:none;gap:12px;align-items:center;flex-wrap:wrap;box-shadow:0 8px 24px rgba(2,132,199,.22);max-width:96vw;font-size:12.5px;color:#0369A1}
+#userDraftBar .ud-tag{background:#0284C7;color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:6px;letter-spacing:.3px}
+#userDraftBar .ud-count{font-weight:600;color:#0C4A6E}
+#userDraftBar .ud-actions{display:flex;gap:6px;align-items:center;margin-left:auto}
+#userDraftBar button{padding:7px 12px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer}
+#userDraftBar .ud-btn-submit{background:#0284C7;color:#fff;border:none;box-shadow:0 2px 6px rgba(2,132,199,.3)}
+#userDraftBar .ud-btn-submit:hover{background:#0369A1}
+#userDraftBar .ud-btn-undo{background:#fff;color:#0284C7;border:1.5px solid #7DD3FC}
+#userDraftBar .ud-btn-undo:hover{background:#E0F2FE}
+#userDraftBar .ud-btn-discard{background:#fff;color:#DC2626;border:1.5px solid #FCA5A5}
+#userDraftBar .ud-btn-discard:hover{background:#FEF2F2}
+table.cal td.user-draft-cell{position:relative;outline:2.5px dashed #0284C7!important;outline-offset:-2.5px;background:#E0F2FE!important;color:#0369A1!important;font-weight:700!important}
+table.cal td .ud-cell-badge{display:block;font-size:9px;font-weight:700;padding:1px 3px;border-radius:4px;margin-top:2px;line-height:1.2;text-align:center}
+table.cal td .ud-cell-badge.b-cuti{background:#FEE2E2;color:#991B1B}
+table.cal td .ud-cell-badge.b-kuning{background:#FEF3C7;color:#92400E}
+table.cal td .ud-cell-badge.b-swap{background:#E0E7FF;color:#3730A3}
+table.cal td .ud-cell-badge.b-lock{background:#DBEAFE;color:#1E40AF}
+@media print{#draftBar,#userDraftBar,#draftPanel,.preview-banner,.st-chip.draft{display:none!important}td.chg::before,.swn{display:none!important}body.is-draft .calwrap{border:none;background-image:none}}
 </style>
 </head>
 <body>
@@ -1071,7 +1104,7 @@ table.cal td.flash{animation:flashc .45s 4;outline:3px solid #E8590C;outline-off
   </button>
   <button class="navbtn" data-panel="lock">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-    Lock admin
+    Lock admin<span class="navbadge" id="badgeLock" hidden></span>
   </button>
   <div class="spacer"></div>
   <button class="navbtn" id="btnOpenAdmin" style="background:linear-gradient(135deg, #123A5E, #1B4E7A); color:#fff; border-color:transparent; position:relative;">
@@ -1163,7 +1196,7 @@ table.cal td.flash{animation:flashc .45s 4;outline:3px solid #E8590C;outline-off
       </button>
       <button class="admin-tab" data-atab="lock">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Lock admin
+        Lock admin <span class="count zero" id="cntLock">0</span>
       </button>
       <button class="admin-tab" data-atab="print">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -1192,7 +1225,8 @@ table.cal td.flash{animation:flashc .45s 4;outline:3px solid #E8590C;outline-off
 
 <div class="toast" id="toast"></div>
 <div id="draftBar" role="status"></div>
+<div id="userDraftBar" role="status"></div>
 
-<script src="logika.js?v=12"></script>
+<script src="logika.js?v=13"></script>
 </body>
 </html>

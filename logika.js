@@ -265,16 +265,20 @@ function tryLogin(){
 }
 function enterApp(role){
   currentRole = role;
+  restoreUserDraft();
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('loginScreen').setAttribute('aria-hidden','true');
   document.getElementById('appRoot').style.display = 'block';
   document.getElementById('btnOpenAdmin').style.display = isAdmin() ? 'inline-flex' : 'none';
   updateUserChip();
   renderAll();
+  updateUserDraftBar();
 }
 function logout(){
   clearSession();
   currentRole = 'guest';
+  userDraftState = null;
+  updateUserDraftBar();
   closeModal();
   hideAdminPage();
   document.getElementById('userChipMenu').classList.remove('open');
@@ -415,38 +419,47 @@ function pendingCounts(){
   return {
     cuti: cutiList.filter(c=>c.status==='pending').length,
     kuning: kuningList.filter(k=>k.status==='pending').length,
-    swap: swapList.filter(s=>s.status==='pending').length
+    swap: swapList.filter(s=>s.status==='pending').length,
+    lock: lockedList.filter(l=>l.status==='pending' || (l.reason && l.reason.startsWith('[PENDING]'))).length
   };
 }
 function updateNavBadges(){
   const bc = document.getElementById('badgeCuti');
   const bk = document.getElementById('badgeKuning');
   const bs = document.getElementById('badgeSwap');
+  const bl = document.getElementById('badgeLock');
   const lk = document.getElementById('lockKuning');
-  let nCuti, nKuning, nSwap;
+  let nCuti, nKuning, nSwap, nLock;
   if(isAdmin()){
     const p = pendingCounts();
-    nCuti = p.cuti; nKuning = p.kuning; nSwap = p.swap;
+    nCuti = p.cuti; nKuning = p.kuning; nSwap = p.swap; nLock = p.lock;
   } else if(isUserRole()){
     nCuti = cutiList.filter(c=>c.personnelId===currentPersonnelId() && c.status==='pending').length;
     nKuning = kuningList.filter(k=>k.personnelId===currentPersonnelId() && k.status==='pending').length;
     nSwap = swapList.filter(s=>s.requesterId===currentPersonnelId() && s.status==='pending').length;
-  } else { nCuti = 0; nKuning = 0; nSwap = 0; }
+    nLock = lockedList.filter(l=>l.personnelId===currentPersonnelId() && (l.status==='pending' || (l.reason && l.reason.startsWith('[PENDING]')))).length;
+  } else { nCuti = 0; nKuning = 0; nSwap = 0; nLock = 0; }
   bc.hidden = nCuti===0; bc.textContent = nCuti;
   bk.hidden = nKuning===0; bk.textContent = nKuning;
   if(bs){ bs.hidden = nSwap===0; bs.textContent = nSwap; }
+  if(bl){ bl.hidden = nLock===0; bl.textContent = nLock; }
   if(lk){ lk.hidden = isKuningWindowOpen(); lk.title = isKuningWindowOpen() ? '' : `Ditutup, dibuka lagi ${nextKuningOpenLabel()}`; }
 
   const ba = document.getElementById('badgeAdmin');
   if(ba){
-    const total = pendingCounts().cuti + pendingCounts().kuning + pendingCounts().swap;
+    const p = pendingCounts();
+    const total = p.cuti + p.kuning + p.swap + p.lock;
     ba.hidden = total===0; ba.textContent = total;
   }
 }
 function personnelOptions(){ return personnel.map(p=>`<option value="${p.id}">${p.name}</option>`).join(''); }
 function kuningUsedInMonth(pid, month, year){
-  return kuningList.filter(k=>k.personnelId===pid && k.status!=='rejected' && k.month===month && k.year===year)
+  let count = kuningList.filter(k=>k.personnelId===pid && k.status!=='rejected' && k.month===month && k.year===year)
     .reduce((sum,k)=> sum + (k.end-k.start+1), 0);
+  if(typeof userDraftState !== 'undefined' && userDraftState && userDraftState.personnelId===pid && userDraftState.year===year && userDraftState.month===month){
+    count += userDraftState.items.filter(x=>x.type==='kuning').length;
+  }
+  return count;
 }
 function effectiveKuningQuota(pid, year, month){
   const base = personnel[pid].kuningQuota;
@@ -479,8 +492,12 @@ function setCutiBalance(pid, year, val){
   persistCutiBalance(pid, year, balance);
 }
 function cutiUsedInYear(pid, year){
-  return cutiList.filter(c=>c.personnelId===pid && c.status!=='rejected' && c.year===year)
+  let count = cutiList.filter(c=>c.personnelId===pid && c.status!=='rejected' && c.year===year)
     .reduce((sum,c)=> sum + (c.end-c.start+1), 0);
+  if(typeof userDraftState !== 'undefined' && userDraftState && userDraftState.personnelId===pid && userDraftState.year===year){
+    count += userDraftState.items.filter(x=>x.type==='cuti').length;
+  }
+  return count;
 }
 function fmtRange(c){ return c.start===c.end ? `tgl ${c.start}` : `tgl ${c.start}–${c.end}`; }
 function monthTag(month, year){ return `${monthNames[month-1].slice(0,3)} ${year}`; }
@@ -709,11 +726,47 @@ function renderLockList(){
   box.innerHTML = lockedList.map(l=>{
     const p = getPerson(l.personnelId);
     const isPastOrActive = (l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d);
-    const actionHtml = isPastOrActive
-      ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
-      : `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
-    return `<div class="reqrow approved"><span>${esc(p.name)} · tgl ${l.date} (${monthTag(l.month,l.year)}) · ${l.slot}${l.reason?' ('+esc(l.reason)+')':''}</span>${actionHtml}</div>`;
+    const isPending = (l.status === 'pending' || (l.reason && l.reason.startsWith('[PENDING]')));
+    let actionHtml = '';
+    if(isPending){
+      actionHtml = `<div class="actions">
+        <button class="small ok-btn" onclick="approveLock(${l.id})">Setuju</button>
+        <button class="small reject-btn" onclick="rejectLock(${l.id})">Tolak</button>
+      </div>`;
+    } else if(isPastOrActive){
+      actionHtml = `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`;
+    } else {
+      actionHtml = `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
+    }
+    const cleanReason = (l.reason || '').replace(/^\[PENDING\]\s*/, '');
+    const badgePending = isPending ? `<span class="badge pending" style="margin-left:6px;">Menunggu Persetujuan</span>` : '';
+    return `<div class="reqrow ${isPending?'pending':'approved'}">
+      <span>${esc(p.name)} · tgl ${l.date} (${monthTag(l.month,l.year)}) · ${l.slot}${cleanReason?' ('+esc(cleanReason)+')':''}${badgePending}</span>
+      ${actionHtml}
+    </div>`;
   }).join('') || `<div class="note">Belum ada lock admin.</div>`;
+}
+
+async function approveLock(id){
+  const l = lockedList.find(x => x.id === id);
+  if(!l) return;
+  l.reason = (l.reason || '').replace(/^\[PENDING\]\s*/, '');
+  l.status = 'approved';
+  await dbUpdate('locked_slots', id, { reason: l.reason });
+  toast(`Permohonan lock slot ${l.slot} untuk ${getPerson(l.personnelId).name} tgl ${l.date} disetujui.`);
+  refreshAdminOrModal();
+  maybeRegenerate(l.month, l.year, `Lock ${l.slot} ${getPerson(l.personnelId).name} disetujui`, l.date);
+}
+
+async function rejectLock(id){
+  const l = lockedList.find(x => x.id === id);
+  if(!l) return;
+  const ok = confirm(`Tolak permohonan lock tanggal ${l.date} untuk ${getPerson(l.personnelId).name}?`);
+  if(!ok) return;
+  lockedList = lockedList.filter(x => x.id !== id);
+  await dbDelete('locked_slots', id);
+  toast(`Permohonan lock ditolak.`);
+  refreshAdminOrModal();
 }
 function addLock(){
   const personnelId = parseInt(document.getElementById('lockPersonel').value);
@@ -1381,9 +1434,10 @@ function computeCell(day, pid, dayEntry, month, year){
   const isPS = dayEntry && dayEntry.PS && dayEntry.PS.includes(pid);
   const isM = dayEntry && dayEntry.M && dayEntry.M.includes(pid);
   const lockItem = lockedList.find(l=>l.personnelId===pid && l.date===day && l.month===month && l.year===year);
-  const locked = (isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || 
+  const isPendingLock = Boolean(lockItem && (lockItem.status==='pending' || (lockItem.reason && lockItem.reason.startsWith('[PENDING]'))));
+  const locked = !isPendingLock && ((isPS && dayEntry.lockedPS && dayEntry.lockedPS.includes(pid)) || 
                  (isM && dayEntry.lockedM && dayEntry.lockedM.includes(pid)) || 
-                 Boolean(lockItem);
+                 Boolean(lockItem));
   const swappedIn = (isPS && dayEntry.swappedPS && dayEntry.swappedPS.includes(pid)) || (isM && dayEntry.swappedM && dayEntry.swappedM.includes(pid));
 
   const currentSlot = isPS ? 'PS' : (isM ? 'M' : null);
@@ -1397,6 +1451,7 @@ function computeCell(day, pid, dayEntry, month, year){
   if(onKuning) return {cls:'slot-kuning', label:'K', title:'Kuning (Disetujui)'};
   if(pendingCuti) return {cls:'slot-cuti-pending', label:'C⏳', title:'Pengajuan Cuti (Menunggu persetujuan admin)'};
   if(pendingKuning) return {cls:'slot-kuning-pending', label:'K⏳', title:'Pengajuan Kuning (Menunggu persetujuan admin)'};
+  if(isPendingLock) return {cls:'slot-lock-pending', label:(lockItem.slot||'L')+'⏳', title:`Permohonan Lock Slot ${lockItem.slot} (Menunggu persetujuan admin)`};
   if(swappedOut) return {cls:'slot-swap', label:'T', title:'Tukar dinas — jadwal hari ini digantikan personel lain'};
   if(isPS){
     let cls = 'slot-PS' + (locked ? ' locked' : '') + (swappedIn ? ' swapped' : '') + (isCutiRepl ? replCls : '');
@@ -1414,7 +1469,7 @@ function computeCell(day, pid, dayEntry, month, year){
     else if(isCutiRepl) title = `M (menggantikan ${replacedPerson ? replacedPerson.name : 'rekan'} yang ${replType})`;
     return { cls, label: 'M', title };
   }
-  if(lockItem && !isPS && !isM){
+  if(lockItem && !isPS && !isM && !isPendingLock){
     const lSlot = lockItem.slot || 'PS';
     return { cls: (lSlot === 'M' ? 'slot-M' : 'slot-PS') + ' locked', label: lSlot, title: `${lSlot} (terkunci admin / lock khusus: ${lockItem.reason || 'Permintaan Masuk'})` };
   }
@@ -1837,8 +1892,8 @@ function generateSchedule(year, month, initQueue, initCur, existingResult, trigg
     }
 
     // --- TANGGAL KE DEPAN (> effectiveFreeze):
-    const adminLockPS = lockedList.filter(l=>l.date===day && l.slot==='PS' && l.month===month && l.year===year).map(l=>l.personnelId);
-    const adminLockM  = lockedList.filter(l=>l.date===day && l.slot==='M'  && l.month===month && l.year===year).map(l=>l.personnelId);
+    const adminLockPS = lockedList.filter(l=>l.date===day && l.slot==='PS' && l.month===month && l.year===year && l.status!=='pending' && !(l.reason&&l.reason.startsWith('[PENDING]'))).map(l=>l.personnelId);
+    const adminLockM  = lockedList.filter(l=>l.date===day && l.slot==='M'  && l.month===month && l.year===year && l.status!=='pending' && !(l.reason&&l.reason.startsWith('[PENDING]'))).map(l=>l.personnelId);
     const swapInPS    = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
     const swapInM     = swapList.filter(s=>s.status==='approved' && s.slot==='M'  && s.date===day && s.month===month && s.year===year).map(s=>s.partnerId);
     const swapOutPS   = swapList.filter(s=>s.status==='approved' && s.slot==='PS' && s.date===day && s.month===month && s.year===year).map(s=>s.requesterId);
@@ -2842,7 +2897,266 @@ async function saveManualEdit(){
 }
 
 /* =====================================================================
-   PENGAJUAN CEPAT CUTI & KUNING VIA POPUP (UNTUK PERSONEL)
+   MODE DRAFT PENGAJUAN (UNTUK PERSONEL)
+   ===================================================================== */
+let userDraftState = null;
+const UDK = 'shift_ddk_user_draft';
+
+function getUserDraft(y, m){
+  if(!isUserRole()) return null;
+  const myPid = currentPersonnelId();
+  if(userDraftState && userDraftState.personnelId === myPid && userDraftState.year === y && userDraftState.month === m){
+    return userDraftState;
+  }
+  return null;
+}
+
+function startUserDraft(y, m){
+  if(!isUserRole()) return null;
+  const myPid = currentPersonnelId();
+  userDraftState = {
+    personnelId: myPid,
+    year: y,
+    month: m,
+    items: [],
+    history: { undo: [] }
+  };
+  persistUserDraft();
+  return userDraftState;
+}
+
+function persistUserDraft(){
+  if(!userDraftState || !userDraftState.items || !userDraftState.items.length){
+    try { sessionStorage.removeItem(UDK); } catch(e){}
+    return;
+  }
+  try {
+    sessionStorage.setItem(UDK, JSON.stringify(userDraftState));
+  } catch(e){}
+}
+
+function restoreUserDraft(){
+  if(userDraftState || !isUserRole()) return;
+  try {
+    const raw = sessionStorage.getItem(UDK);
+    if(!raw) return;
+    const p = JSON.parse(raw);
+    if(p && p.personnelId === currentPersonnelId() && p.year === viewY && p.month === viewM){
+      userDraftState = p;
+    }
+  } catch(e){}
+}
+
+function addUserDraftItem(item){
+  captureScrollState();
+  if(!userDraftState || userDraftState.year !== viewY || userDraftState.month !== viewM || userDraftState.personnelId !== currentPersonnelId()){
+    startUserDraft(viewY, viewM);
+  }
+  userDraftState.history.undo.push(JSON.parse(JSON.stringify(userDraftState.items)));
+  userDraftState.items = userDraftState.items.filter(x => x.day !== item.day);
+  userDraftState.items.push(item);
+  persistUserDraft();
+  renderScheduleArea();
+  updateUserDraftBar();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
+}
+
+function removeUserDraftItem(day){
+  captureScrollState();
+  if(!userDraftState) return;
+  userDraftState.history.undo.push(JSON.parse(JSON.stringify(userDraftState.items)));
+  userDraftState.items = userDraftState.items.filter(x => x.day !== day);
+  if(userDraftState.items.length === 0){
+    userDraftState = null;
+    try { sessionStorage.removeItem(UDK); } catch(e){}
+  } else {
+    persistUserDraft();
+  }
+  renderScheduleArea();
+  updateUserDraftBar();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
+}
+
+function undoUserDraft(){
+  captureScrollState();
+  if(!userDraftState || !userDraftState.history.undo.length) return;
+  const prev = userDraftState.history.undo.pop();
+  userDraftState.items = prev;
+  if(!userDraftState.items.length){
+    userDraftState = null;
+    try { sessionStorage.removeItem(UDK); } catch(e){}
+  } else {
+    persistUserDraft();
+  }
+  renderScheduleArea();
+  updateUserDraftBar();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
+  toast('↶ Undo langkah pengajuan draft.');
+}
+
+function discardUserDraft(){
+  if(!userDraftState) return;
+  if(confirm('Batalkan SEMUA permohonan di draft pengajuan Anda?')){
+    captureScrollState();
+    userDraftState = null;
+    try { sessionStorage.removeItem(UDK); } catch(e){}
+    renderScheduleArea();
+    updateUserDraftBar();
+    restoreScrollState();
+    requestAnimationFrame(restoreScrollState);
+    toast('Draft pengajuan dibatalkan.');
+  }
+}
+
+async function submitUserDraft(y, m){
+  const draft = getUserDraft(y, m);
+  if(!draft || !draft.items || !draft.items.length){
+    toast('Tidak ada permohonan di dalam draft.');
+    return;
+  }
+
+  const count = draft.items.length;
+  const ok = confirm(`Kirim ${count} permohonan dalam draft ini ke Admin?\n\nSemua permohonan akan berstatus MENUNGGU PERSETUJUAN ADMIN sebelum resmi berlaku.`);
+  if(!ok) return;
+
+  const myPid = draft.personnelId;
+  for(const it of draft.items){
+    if(it.type === 'cuti'){
+      const row = {
+        id: nextId++,
+        personnelId: myPid,
+        start: it.day,
+        end: it.day,
+        reason: it.reason || 'Cuti tahunan',
+        status: 'pending',
+        month: m,
+        year: y
+      };
+      cutiList.push(row);
+      await dbInsert('cuti_requests', {
+        id: row.id,
+        personnel_id: myPid,
+        start_day: it.day,
+        end_day: it.day,
+        reason: row.reason,
+        status: 'pending',
+        month: m,
+        year: y
+      });
+    } else if(it.type === 'kuning'){
+      const row = {
+        id: nextId++,
+        personnelId: myPid,
+        start: it.day,
+        end: it.day,
+        reason: it.reason || 'Keinginan libur',
+        status: 'pending',
+        month: m,
+        year: y
+      };
+      kuningList.push(row);
+      await dbInsert('kuning_requests', {
+        id: row.id,
+        personnel_id: myPid,
+        start_day: it.day,
+        end_day: it.day,
+        reason: row.reason,
+        status: 'pending',
+        month: m,
+        year: y
+      });
+    } else if(it.type === 'swap'){
+      const row = {
+        id: nextId++,
+        requesterId: myPid,
+        partnerId: it.partnerId,
+        date: it.day,
+        slot: it.slot,
+        reason: it.reason || 'Tukar dinas',
+        status: 'pending',
+        month: m,
+        year: y
+      };
+      swapList.push(row);
+      await dbInsert('swap_requests', {
+        id: row.id,
+        requester_id: myPid,
+        partner_id: it.partnerId,
+        date: it.day,
+        slot: it.slot,
+        reason: row.reason,
+        status: 'pending',
+        month: m,
+        year: y
+      });
+    } else if(it.type === 'lock'){
+      const row = {
+        id: nextId++,
+        personnelId: myPid,
+        date: it.day,
+        slot: it.slot,
+        reason: '[PENDING] ' + (it.reason || `Permohonan slot ${it.slot}`),
+        month: m,
+        year: y,
+        status: 'pending'
+      };
+      lockedList.push(row);
+      await dbInsert('locked_slots', {
+        id: row.id,
+        personnel_id: myPid,
+        date: it.day,
+        slot: it.slot,
+        reason: row.reason,
+        month: m,
+        year: y
+      });
+    }
+  }
+
+  userDraftState = null;
+  try { sessionStorage.removeItem(UDK); } catch(e){}
+  renderAll();
+  toast(`✅ Berhasil mengirim ${count} pengajuan ke Admin (Menunggu Persetujuan).`);
+}
+
+function updateUserDraftBar(){
+  const bar = document.getElementById('userDraftBar');
+  if(!bar) return;
+  if(!isUserRole() || !userDraftState || !userDraftState.items || !userDraftState.items.length){
+    bar.style.display = 'none';
+    return;
+  }
+  const myPid = currentPersonnelId();
+  const p = getPerson(myPid);
+  const items = userDraftState.items;
+  const count = items.length;
+  const nCuti = items.filter(x => x.type === 'cuti').length;
+  const nKuning = items.filter(x => x.type === 'kuning').length;
+  const nSwap = items.filter(x => x.type === 'swap').length;
+  const nLock = items.filter(x => x.type === 'lock').length;
+  const parts = [];
+  if(nCuti) parts.push(`${nCuti} Cuti`);
+  if(nKuning) parts.push(`${nKuning} Kuning`);
+  if(nSwap) parts.push(`${nSwap} Tukar`);
+  if(nLock) parts.push(`${nLock} Lock`);
+
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <span class="ud-tag">✏️ DRAFT PENGAJUAN</span>
+    <span class="ud-count"><b>${esc(p ? p.name : 'Anda')}:</b> ${count} permohonan (${parts.join(', ')}) · <i>Belum diajukan</i></span>
+    <div class="ud-actions">
+      <button type="button" class="ud-btn ud-btn-undo" onclick="undoUserDraft()" ${!userDraftState.history.undo.length?'disabled style="opacity:0.5;pointer-events:none;"':''}>↶ Undo</button>
+      <button type="button" class="ud-btn ud-btn-discard" onclick="discardUserDraft()">✕ Batalkan</button>
+      <button type="button" class="ud-btn ud-btn-submit" onclick="submitUserDraft(${viewY}, ${viewM})">✔ Kirim Semua Pengajuan</button>
+    </div>
+  `;
+}
+
+/* =====================================================================
+   PENGAJUAN CEPAT CUTI, KUNING, TUKAR, & LOCK VIA POPUP (UNTUK PERSONEL)
    ===================================================================== */
 let userRequestState = null;
 
@@ -2853,7 +3167,7 @@ function openUserRequestModal(day, pid){
   }
   const myPid = currentPersonnelId();
   if(pid !== myPid){
-    toast(`Anda hanya dapat mengajukan Cuti atau Kuning untuk akun Anda sendiri (${personnel[myPid].name}).`);
+    toast(`Anda hanya dapat mengajukan permohonan untuk akun Anda sendiri (${personnel[myPid].name}).`);
     return;
   }
   const freeze = freezeBoundaryForMonth(viewY, viewM);
@@ -2864,15 +3178,37 @@ function openUserRequestModal(day, pid){
 
   const existingCuti = cutiList.find(c => c.personnelId === pid && c.year === viewY && c.month === viewM && day >= c.start && day <= c.end);
   const existingKuning = kuningList.find(k => k.personnelId === pid && k.year === viewY && k.month === viewM && day >= k.start && day <= k.end);
+  const existingSwap = swapList.find(s => s.requesterId === pid && s.year === viewY && s.month === viewM && s.date === day);
+  const existingLock = lockedList.find(l => l.personnelId === pid && l.year === viewY && l.month === viewM && l.date === day);
+
+  const draft = getUserDraft(viewY, viewM);
+  const draftItem = draft ? draft.items.find(x => x.day === day) : null;
 
   let initialMode = 'CUTI';
   let initialReason = '';
-  if(existingKuning){
+  let initialSlot = 'PS';
+  let initialPartnerId = null;
+
+  if(draftItem){
+    initialMode = draftItem.type.toUpperCase();
+    initialReason = draftItem.reason || '';
+    initialSlot = draftItem.slot || 'PS';
+    initialPartnerId = draftItem.partnerId || null;
+  } else if(existingKuning){
     initialMode = 'KUNING';
     initialReason = existingKuning.reason || '';
   } else if(existingCuti){
     initialMode = 'CUTI';
     initialReason = existingCuti.reason || '';
+  } else if(existingSwap){
+    initialMode = 'SWAP';
+    initialReason = existingSwap.reason || '';
+    initialSlot = existingSwap.slot || 'PS';
+    initialPartnerId = existingSwap.partnerId;
+  } else if(existingLock){
+    initialMode = 'LOCK';
+    initialReason = (existingLock.reason || '').replace(/^\[PENDING\]\s*/, '');
+    initialSlot = existingLock.slot || 'PS';
   }
 
   userRequestState = {
@@ -2882,8 +3218,13 @@ function openUserRequestModal(day, pid){
     month: viewM,
     selectedMode: initialMode,
     reason: initialReason,
+    slot: initialSlot,
+    partnerId: initialPartnerId,
     existingCuti,
-    existingKuning
+    existingKuning,
+    existingSwap,
+    existingLock,
+    draftItem
   };
 
   openModal('user_request');
@@ -2891,7 +3232,7 @@ function openUserRequestModal(day, pid){
 
 function renderUserRequestPanel(area){
   if(!userRequestState) return;
-  const { day, pid, year, month, selectedMode, reason, existingCuti, existingKuning } = userRequestState;
+  const { day, pid, year, month, selectedMode, reason, slot, partnerId, existingCuti, existingKuning, existingSwap, existingLock, draftItem } = userRequestState;
   const p = getPerson(pid);
   const dow = new Date(year, month - 1, day).getDay();
   const dayNamesFull = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -2899,35 +3240,48 @@ function renderUserRequestPanel(area){
 
   const sched = schedules[skey(year, month)];
   let currentShiftLabel = 'Libur / Belum ada jadwal';
+  let userShift = null;
   if(sched && sched.calendar && sched.calendar[day-1]){
     const dEntry = sched.calendar[day-1];
-    if((dEntry.PS||[]).includes(pid)) currentShiftLabel = 'Pagi Siang (PS)';
-    else if((dEntry.M||[]).includes(pid)) currentShiftLabel = 'Malam (M)';
+    if((dEntry.PS||[]).includes(pid)){ currentShiftLabel = 'Pagi Siang (PS)'; userShift = 'PS'; }
+    else if((dEntry.M||[]).includes(pid)){ currentShiftLabel = 'Malam (M)'; userShift = 'M'; }
     else if((dEntry.L1||[]).includes(pid)) currentShiftLabel = 'Libur-1 (L1)';
     else if((dEntry.L2||[]).includes(pid)) currentShiftLabel = 'Libur-2 (L2)';
     else currentShiftLabel = 'Libur / Antre';
   }
 
-  // Quota Cuti
+  // Quota Cuti & Kuning dinamis
   const totalCuti = cutiBalanceForYear(pid, year);
   const usedCuti = cutiUsedInYear(pid, year);
-  const sisaCuti = Math.max(0, totalCuti - usedCuti);
+  const sisaCuti = Math.max(0, totalCuti - usedCuti + (draftItem && draftItem.type === 'cuti' ? 1 : 0));
 
-  // Quota Kuning
   const isKuningOpen = isKuningWindowOpen();
   const quotaKuning = effectiveKuningQuota(pid, year, month);
   const usedKuning = kuningUsedInMonth(pid, month, year);
-  const sisaKuning = Math.max(0, quotaKuning - usedKuning);
+  const sisaKuning = Math.max(0, quotaKuning - usedKuning + (draftItem && draftItem.type === 'kuning' ? 1 : 0));
 
   // Existing request banner
   let existingBanner = '';
-  const existingItem = existingCuti || existingKuning;
-  if(existingCuti){
+  if(draftItem){
+    const dTypeLabel = draftItem.type === 'cuti' ? 'Cuti Resmi'
+      : (draftItem.type === 'kuning' ? 'Kuning'
+      : (draftItem.type === 'swap' ? `Tukar Dinas (→ ${getPerson(draftItem.partnerId)?.name || 'Rekan'})`
+      : `Permohonan Lock Slot (${draftItem.slot})`));
+    existingBanner = `
+      <div style="background:#F0F9FF; border:1.5px dashed #0284C7; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:700; color:#0369A1; font-size:13px;">✏️ Sedang di Draft Pengajuan: ${esc(dTypeLabel)}</span>
+          <span class="badge" style="background:#0284C7; color:#fff;">Draft</span>
+        </div>
+        <div style="color:var(--ink-soft); font-size:12px;">Alasan: <i>${esc(draftItem.reason || '-')}</i></div>
+      </div>
+    `;
+  } else if(existingCuti){
     const isApp = existingCuti.status === 'approved';
     existingBanner = `
       <div style="background:#FDF2F1; border:1px solid #F5C6C2; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-          <span style="font-weight:700; color:var(--red); font-size:13px;">🏖 Pengajuan Cuti Tanggal Ini</span>
+          <span style="font-weight:700; color:var(--red); font-size:13px;">🏖 Pengajuan Cuti Tanggal Ini (Database)</span>
           <span class="badge ${isApp?'approved':'pending'}">${isApp?'Disetujui':'Menunggu Admin'}</span>
         </div>
         <div style="color:var(--ink-soft); font-size:12px;">Alasan: <i>${esc(existingCuti.reason || 'Cuti tahunan')}</i></div>
@@ -2938,12 +3292,55 @@ function renderUserRequestPanel(area){
     existingBanner = `
       <div style="background:#FEF9E7; border:1px solid #FCE599; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-          <span style="font-weight:700; color:#7D5A06; font-size:13px;">⭐ Pengajuan Kuning Tanggal Ini</span>
+          <span style="font-weight:700; color:#7D5A06; font-size:13px;">⭐ Pengajuan Kuning Tanggal Ini (Database)</span>
           <span class="badge ${isApp?'approved':'pending'}">${isApp?'Disetujui':'Menunggu Admin'}</span>
         </div>
         <div style="color:var(--ink-soft); font-size:12px;">Alasan: <i>${esc(existingKuning.reason || 'Keinginan libur')}</i></div>
       </div>
     `;
+  } else if(existingSwap){
+    const isApp = existingSwap.status === 'approved';
+    const partner = getPerson(existingSwap.partnerId);
+    existingBanner = `
+      <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:700; color:#15803D; font-size:13px;">🔄 Pengajuan Tukar Dinas Tanggal Ini (Database)</span>
+          <span class="badge ${isApp?'approved':'pending'}">${isApp?'Disetujui':'Menunggu Admin'}</span>
+        </div>
+        <div style="color:var(--ink-soft); font-size:12px;">Rekan: <b>${esc(partner ? partner.name : '?')}</b> (${existingSwap.slot}) · Alasan: <i>${esc(existingSwap.reason || 'Tukar dinas')}</i></div>
+      </div>
+    `;
+  } else if(existingLock){
+    const isPending = (existingLock.status === 'pending' || (existingLock.reason && existingLock.reason.startsWith('[PENDING]')));
+    const cleanReason = (existingLock.reason || '').replace(/^\[PENDING\]\s*/, '');
+    existingBanner = `
+      <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:700; color:var(--blue); font-size:13px;">🔒 Lock Slot Tanggal Ini (Database)</span>
+          <span class="badge ${isPending?'pending':'approved'}">${isPending?'Menunggu Admin':'Terkunci (Disetujui)'}</span>
+        </div>
+        <div style="color:var(--ink-soft); font-size:12px;">Slot: <b>${existingLock.slot}</b> · Alasan: <i>${esc(cleanReason || 'Permohonan lock')}</i></div>
+      </div>
+    `;
+  }
+
+  // Pilihan partner untuk Tukar Dinas
+  let partnerOptionsHtml = '';
+  const canSwap = Boolean(userShift && (userShift === 'PS' || userShift === 'M'));
+  if(canSwap && sched && sched.calendar && sched.calendar[day-1]){
+    const availPartners = availablePartnersForDay(sched, day, pid);
+    if(availPartners.length > 0){
+      partnerOptionsHtml = availPartners.map(id => {
+        const sel = (id === partnerId) ? 'selected' : '';
+        return `<option value="${id}" ${sel}>${esc(personnel[id].name)} (Libur-2 · Tersedia)</option>`;
+      }).join('');
+    } else {
+      partnerOptionsHtml = personnel.filter(p => p.id !== pid).map(p => {
+        const st = partnerStatusForDay(sched, day, p.id);
+        const sel = (p.id === partnerId) ? 'selected' : '';
+        return `<option value="${p.id}" ${sel}>${esc(p.name)} (${st.label})</option>`;
+      }).join('');
+    }
   }
 
   document.getElementById('mSub').textContent = `${p.name} · ${dayStr}`;
@@ -2964,19 +3361,29 @@ function renderUserRequestPanel(area){
 
       ${existingBanner}
 
-      <!-- Pilihan 2 Tombol: Cuti vs Kuning -->
+      <!-- Pilihan 4 Tombol -->
       <div class="formrow" style="margin-bottom:12px;">
         <label style="font-weight:700; font-size:13px;">Pilih Jenis Pengajuan:</label>
         <div class="user-req-toggle">
           <button type="button" class="user-opt-btn opt-cuti ${selectedMode==='CUTI'?'active':''}" data-mode="CUTI">
             <span class="u-icon">🏖</span>
-            <span class="u-title" style="color:var(--red);">Cuti Resmi (C)</span>
-            <span class="u-sub">Potong cuti tahunan</span>
+            <span class="u-title" style="color:var(--red);">Cuti Resmi</span>
+            <span class="u-sub">Potong cuti</span>
           </button>
           <button type="button" class="user-opt-btn opt-kuning ${selectedMode==='KUNING'?'active':''}" data-mode="KUNING">
             <span class="u-icon">⭐</span>
-            <span class="u-title" style="color:#7D5A06;">Kuning (K)</span>
+            <span class="u-title" style="color:#7D5A06;">Kuning</span>
             <span class="u-sub">Keinginan libur</span>
+          </button>
+          <button type="button" class="user-opt-btn opt-swap ${selectedMode==='SWAP'?'active':''}" data-mode="SWAP">
+            <span class="u-icon">🔄</span>
+            <span class="u-title" style="color:#0284C7;">Tukar Dinas</span>
+            <span class="u-sub">Ganti shift</span>
+          </button>
+          <button type="button" class="user-opt-btn opt-lock ${selectedMode==='LOCK'?'active':''}" data-mode="LOCK">
+            <span class="u-icon">🔒</span>
+            <span class="u-title" style="color:var(--blue);">Lock Slot</span>
+            <span class="u-sub">Mohon slot</span>
           </button>
         </div>
       </div>
@@ -2984,7 +3391,7 @@ function renderUserRequestPanel(area){
       <!-- Detail Box Cuti -->
       <div id="userCutiDetailBox" style="${selectedMode==='CUTI'?'':'display:none;'}">
         <div class="quotainfo" style="margin-bottom:12px; background:#F0FDF4; border:1px solid #BBF7D0; color:#14532D; border-radius:10px; padding:11px 13px;">
-          Sisa cuti tahunan Anda (${year}): <b>${sisaCuti}</b> dari <b>${totalCuti}</b> hari${usedCuti>0?` (${usedCuti} hari terpakai/menunggu)`:''}.
+          Sisa cuti tahunan Anda (${year}): <b>${sisaCuti}</b> dari <b>${totalCuti}</b> hari${usedCuti>0?` (${usedCuti} hari terpakai/menunggu/draft)`:''}.
           ${sisaCuti <= 0 ? '<div style="color:var(--red); font-weight:700; margin-top:4px;">⚠ Kuota cuti tahunan Anda telah habis.</div>' : ''}
         </div>
         <div class="formrow" style="margin-bottom:0;">
@@ -3002,7 +3409,7 @@ function renderUserRequestPanel(area){
           </div>
         ` : ''}
         <div class="quotainfo" style="margin-bottom:12px; background:#FEF9E7; border:1px solid #FCE599; color:#7D5A06; border-radius:10px; padding:11px 13px;">
-          Kuota kuning bulan ${monthNames[month-1]} ${year}: sisa <b>${sisaKuning}</b> dari <b>${quotaKuning}</b> hari${usedKuning>0?` (${usedKuning} hari terpakai/menunggu)`:''}.
+          Kuota kuning bulan ${monthNames[month-1]} ${year}: sisa <b>${sisaKuning}</b> dari <b>${quotaKuning}</b> hari${usedKuning>0?` (${usedKuning} hari terpakai/menunggu/draft)`:''}.
           ${sisaKuning <= 0 ? '<div style="color:var(--red); font-weight:700; margin-top:4px;">⚠ Batas kuota kuning bulan ini telah tercapai.</div>' : ''}
         </div>
         <div class="formrow" style="margin-bottom:0;">
@@ -3011,14 +3418,67 @@ function renderUserRequestPanel(area){
         </div>
       </div>
 
+      <!-- Detail Box Tukar Dinas (Swap) -->
+      <div id="userSwapDetailBox" style="${selectedMode==='SWAP'?'':'display:none;'}">
+        ${canSwap ? `
+          <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:10px; padding:11px 13px; margin-bottom:12px; font-size:12.5px; color:#0369A1;">
+            <div>Dinas Anda pada tanggal ini: <b>${userShift === 'PS' ? 'Pagi Siang (PS)' : 'Malam (M)'}</b></div>
+            <div style="font-size:11.5px; color:#0284C7; margin-top:3px;">Pilih rekan pengganti yang sedang libur (Libur-2 / bersedia menggantikan).</div>
+          </div>
+          <div class="formrow">
+            <label style="font-size:12.5px; font-weight:600;">Pilih Rekan Pengganti:</label>
+            <select id="selUserSwapPartner">
+              ${partnerOptionsHtml || '<option value="">(Tidak ada rekan yang tersedia)</option>'}
+            </select>
+          </div>
+          <div class="formrow" style="margin-bottom:0;">
+            <label style="font-size:12.5px; font-weight:600;">Alasan Tukar Dinas:</label>
+            <input type="text" id="txtUserSwapReason" value="${esc(reason)}" placeholder="mis. ada urusan mendadak, izin tukar dinas">
+          </div>
+        ` : `
+          <div style="background:#FFF1F2; border:1px solid #FECDD3; border-radius:10px; padding:12px; font-size:12.5px; color:#9F1239;">
+            <b>⚠ Tidak Dapat Mengajukan Tukar Dinas:</b><br>
+            Anda sedang <b>${currentShiftLabel}</b> pada tanggal ini. Tukar dinas hanya dapat diajukan jika Anda memiliki jadwal dinas (PS atau M).
+          </div>
+        `}
+      </div>
+
+      <!-- Detail Box Lock Slot -->
+      <div id="userLockDetailBox" style="${selectedMode==='LOCK'?'':'display:none;'}">
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:11px 13px; margin-bottom:12px; font-size:12.5px; color:#1E40AF;">
+          <div><b>Permohonan Kunci Slot (Lock):</b></div>
+          <div style="font-size:11.5px; color:#3B82F6; margin-top:3px;">Ajukan permohonan agar Admin menetapkan slot dinas khusus untuk Anda di tanggal ini. Permohonan ini <b>wajib disetujui Admin</b> sebelum resmi berlaku.</div>
+        </div>
+        <div class="formrow">
+          <label style="font-size:12.5px; font-weight:600;">Pilihan Slot yang Dimohon:</label>
+          <div style="display:flex; gap:16px; margin-top:4px;">
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; font-size:13px;">
+              <input type="radio" name="radUserLockSlot" value="PS" ${slot==='PS'?'checked':''}> PS (Pagi Siang)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; font-size:13px;">
+              <input type="radio" name="radUserLockSlot" value="M" ${slot==='M'?'checked':''}> M (Malam)
+            </label>
+          </div>
+        </div>
+        <div class="formrow" style="margin-bottom:0;">
+          <label style="font-size:12.5px; font-weight:600;">Alasan Permohonan Lock Slot:</label>
+          <input type="text" id="txtUserLockReason" value="${esc(reason)}" placeholder="mis. izin kegiatan dinas siang hari, mohon dinas malam">
+        </div>
+      </div>
+
       <!-- Tombol Aksi -->
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
-        <button class="submit" id="btnSubmitUserReq" style="padding:14px; font-size:14px; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px;">
-          ${selectedMode==='CUTI' ? '🏖 Kirim Pengajuan Cuti' : '⭐ Kirim Pengajuan Kuning'}
+        <button class="submit" id="btnAddToDraft" style="padding:14px; font-size:14px; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #0284C7, #0369A1);">
+          ${draftItem ? '💾 Perbarui di Draft Pengajuan' : '➕ Masukkan ke Draft Pengajuan'}
         </button>
-        ${existingItem ? `
+        ${draftItem ? `
+          <button type="button" id="btnRemoveFromDraft" style="padding:11px; font-size:13px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
+            🗑 Hapus Tanggal Ini dari Draft Pengajuan
+          </button>
+        ` : ''}
+        ${(existingCuti || existingKuning || existingSwap || existingLock) ? `
           <button type="button" id="btnCancelUserReq" style="padding:11px; font-size:13px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
-            🗑 Batalkan Pengajuan Tanggal Ini
+            🗑 Batalkan Pengajuan yang Sudah Ada di Database
           </button>
         ` : ''}
         <button class="ghost" type="button" onclick="closeModal()" style="padding:10px; border-radius:10px;">Tutup</button>
@@ -3035,150 +3495,117 @@ function renderUserRequestPanel(area){
 
       const cutiBox = document.getElementById('userCutiDetailBox');
       const kuningBox = document.getElementById('userKuningDetailBox');
-      const submitBtn = document.getElementById('btnSubmitUserReq');
+      const swapBox = document.getElementById('userSwapDetailBox');
+      const lockBox = document.getElementById('userLockDetailBox');
 
       if(cutiBox) cutiBox.style.display = userRequestState.selectedMode === 'CUTI' ? 'block' : 'none';
       if(kuningBox) kuningBox.style.display = userRequestState.selectedMode === 'KUNING' ? 'block' : 'none';
-      if(submitBtn){
-        submitBtn.innerHTML = userRequestState.selectedMode === 'CUTI'
-          ? '🏖 Kirim Pengajuan Cuti'
-          : '⭐ Kirim Pengajuan Kuning';
-      }
+      if(swapBox) swapBox.style.display = userRequestState.selectedMode === 'SWAP' ? 'block' : 'none';
+      if(lockBox) lockBox.style.display = userRequestState.selectedMode === 'LOCK' ? 'block' : 'none';
     });
   });
 
-  // Reason inputs
+  // Reason & inputs
   const txtCuti = document.getElementById('txtUserCutiReason');
-  if(txtCuti){
-    txtCuti.addEventListener('input', () => { userRequestState.reason = txtCuti.value; });
-  }
+  if(txtCuti) txtCuti.addEventListener('input', () => { userRequestState.reason = txtCuti.value; });
   const txtKuning = document.getElementById('txtUserKuningReason');
-  if(txtKuning){
-    txtKuning.addEventListener('input', () => { userRequestState.reason = txtKuning.value; });
+  if(txtKuning) txtKuning.addEventListener('input', () => { userRequestState.reason = txtKuning.value; });
+  const selPartner = document.getElementById('selUserSwapPartner');
+  if(selPartner){
+    if(!userRequestState.partnerId && selPartner.value) userRequestState.partnerId = parseInt(selPartner.value);
+    selPartner.addEventListener('change', () => { userRequestState.partnerId = parseInt(selPartner.value); });
   }
+  const txtSwap = document.getElementById('txtUserSwapReason');
+  if(txtSwap) txtSwap.addEventListener('input', () => { userRequestState.reason = txtSwap.value; });
+  area.querySelectorAll('input[name="radUserLockSlot"]').forEach(rad => {
+    rad.addEventListener('change', () => { userRequestState.slot = rad.value; });
+  });
+  const txtLock = document.getElementById('txtUserLockReason');
+  if(txtLock) txtLock.addEventListener('input', () => { userRequestState.reason = txtLock.value; });
 
   // Buttons
-  const btnSubmit = document.getElementById('btnSubmitUserReq');
-  if(btnSubmit) btnSubmit.addEventListener('click', submitUserRequest);
+  const btnAdd = document.getElementById('btnAddToDraft');
+  if(btnAdd) btnAdd.addEventListener('click', saveUserRequestToDraft);
+
+  const btnRemDraft = document.getElementById('btnRemoveFromDraft');
+  if(btnRemDraft) btnRemDraft.addEventListener('click', removeDraftItemToday);
 
   const btnCancel = document.getElementById('btnCancelUserReq');
   if(btnCancel) btnCancel.addEventListener('click', cancelUserRequest);
 }
 
-async function submitUserRequest(){
+function saveUserRequestToDraft(){
   if(!userRequestState) return;
-  const { day, pid, year, month, selectedMode, reason, existingCuti, existingKuning } = userRequestState;
-
-  if(selectedMode === 'KUNING' && !isKuningWindowOpen()){
-    alert(`Pengajuan kuning sedang ditutup. Pengajuan hanya dibuka tiap tanggal ${kuningWindow.start}–${kuningWindow.end} tiap bulan.`);
-    return;
-  }
-
-  // Bersihkan request tipe lain jika beralih jenis
-  if(selectedMode === 'CUTI' && existingKuning){
-    const idx = kuningList.findIndex(k => k.id === existingKuning.id);
-    if(idx >= 0){
-      kuningList.splice(idx, 1);
-      await dbDelete('kuning_requests', existingKuning.id);
-    }
-  } else if(selectedMode === 'KUNING' && existingCuti){
-    const idx = cutiList.findIndex(c => c.id === existingCuti.id);
-    if(idx >= 0){
-      cutiList.splice(idx, 1);
-      await dbDelete('cuti_requests', existingCuti.id);
-    }
-  }
+  const { day, pid, year, month, selectedMode, reason, slot, partnerId } = userRequestState;
 
   if(selectedMode === 'CUTI'){
-    const balance = cutiBalanceForYear(pid, year);
-    const used = cutiUsedInYear(pid, year);
-    const remaining = balance - used;
-    if(remaining <= 0 && !existingCuti){
-      const ok = confirm(`Sisa cuti tahunan Anda tinggal ${remaining} hari. Apakah Anda tetap ingin mengajukan permohonan cuti ini?`);
-      if(!ok) return;
-    }
-
-    if(existingCuti){
-      existingCuti.reason = reason || 'Cuti tahunan';
-      await dbUpdate('cuti_requests', existingCuti.id, { reason: existingCuti.reason });
-      toast(`Pengajuan cuti tanggal ${day} berhasil diperbarui.`);
-    } else {
-      const row = {
-        id: nextId++,
-        personnelId: pid,
-        start: day,
-        end: day,
-        reason: reason || 'Cuti tahunan',
-        status: 'pending',
-        month,
-        year
-      };
-      cutiList.push(row);
-      await dbInsert('cuti_requests', {
-        id: row.id,
-        personnel_id: pid,
-        start_day: day,
-        end_day: day,
-        reason: row.reason,
-        status: 'pending',
-        month,
-        year
-      });
-      toast(`Pengajuan cuti tanggal ${day} terkirim (menunggu persetujuan admin).`);
+    const total = cutiBalanceForYear(pid, year);
+    const draftCount = (userDraftState ? userDraftState.items.filter(x => x.type === 'cuti' && x.day !== day).length : 0);
+    const baseUsed = cutiList.filter(c=>c.personnelId===pid && c.status!=='rejected' && c.year===year).reduce((s,c)=>s+(c.end-c.start+1),0);
+    if(total - (baseUsed + draftCount) <= 0){
+      if(!confirm(`Sisa kuota cuti tahunan Anda telah habis (${baseUsed + draftCount}/${total}). Apakah Anda tetap ingin memasukkan cuti ini ke draft?`)) return;
     }
   } else if(selectedMode === 'KUNING'){
+    if(!isKuningWindowOpen()){
+      if(!confirm(`Pengajuan kuning sedang di luar jendela tanggal (${kuningWindow.start}-${kuningWindow.end}). Apakah tetap ingin memasukkan ke draft?`)) return;
+    }
     const quota = effectiveKuningQuota(pid, year, month);
-    const used = kuningUsedInMonth(pid, month, year);
-    const remaining = quota - used;
-    if(remaining <= 0 && !existingKuning){
-      const ok = confirm(`Kuota kuning Anda bulan ini sudah terpakai (${used}/${quota} hari). Apakah Anda tetap ingin mengajukan?`);
-      if(!ok) return;
+    const draftCount = (userDraftState ? userDraftState.items.filter(x => x.type === 'kuning' && x.day !== day).length : 0);
+    const baseUsed = kuningList.filter(k=>k.personnelId===pid && k.status!=='rejected' && k.month===month && k.year===year).reduce((s,k)=>s+(k.end-k.start+1),0);
+    if(quota - (baseUsed + draftCount) <= 0){
+      if(!confirm(`Batas kuota kuning bulan ini telah tercapai (${baseUsed + draftCount}/${quota}). Apakah tetap ingin memasukkan ke draft?`)) return;
     }
-
-    if(existingKuning){
-      existingKuning.reason = reason || 'Keinginan libur';
-      await dbUpdate('kuning_requests', existingKuning.id, { reason: existingKuning.reason });
-      toast(`Pengajuan kuning tanggal ${day} berhasil diperbarui.`);
-    } else {
-      const row = {
-        id: nextId++,
-        personnelId: pid,
-        start: day,
-        end: day,
-        reason: reason || 'Keinginan libur',
-        status: 'pending',
-        month,
-        year
-      };
-      kuningList.push(row);
-      await dbInsert('kuning_requests', {
-        id: row.id,
-        personnel_id: pid,
-        start_day: day,
-        end_day: day,
-        reason: row.reason,
-        status: 'pending',
-        month,
-        year
-      });
-      toast(`Pengajuan kuning tanggal ${day} terkirim (menunggu persetujuan admin).`);
+  } else if(selectedMode === 'SWAP'){
+    const sched = schedules[skey(year, month)];
+    const dEntry = sched && sched.calendar && sched.calendar[day-1];
+    const isPS = dEntry && dEntry.PS && dEntry.PS.includes(pid);
+    const isM = dEntry && dEntry.M && dEntry.M.includes(pid);
+    if(!isPS && !isM){
+      alert('Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila Anda memiliki jadwal dinas (PS atau M).');
+      return;
     }
+    const pId = partnerId || parseInt(document.getElementById('selUserSwapPartner')?.value);
+    if(!pId){
+      alert('Pilih rekan pengganti terlebih dahulu.');
+      return;
+    }
+    userRequestState.partnerId = pId;
+    userRequestState.slot = isPS ? 'PS' : 'M';
+  } else if(selectedMode === 'LOCK'){
+    userRequestState.slot = slot || 'PS';
   }
 
+  addUserDraftItem({
+    id: 'ud_' + Date.now(),
+    type: selectedMode.toLowerCase(),
+    day,
+    slot: userRequestState.slot || (selectedMode==='LOCK'?'PS':'PS'),
+    partnerId: userRequestState.partnerId || null,
+    reason: reason || ''
+  });
+
   closeModal();
-  renderScheduleArea();
-  updateNavBadges();
+  toast(`✏️ Permohonan tanggal ${day} berhasil dimasukkan ke Draft. Klik 'Kirim Semua Pengajuan' di bawah setelah selesai.`);
+}
+
+function removeDraftItemToday(){
+  if(!userRequestState) return;
+  removeUserDraftItem(userRequestState.day);
+  closeModal();
+  toast(`Item draft tanggal ${userRequestState.day} dihapus.`);
 }
 
 async function cancelUserRequest(){
   if(!userRequestState) return;
-  const { day, existingCuti, existingKuning } = userRequestState;
-  const target = existingCuti || existingKuning;
+  const { day, existingCuti, existingKuning, existingSwap, existingLock } = userRequestState;
+  const target = existingCuti || existingKuning || existingSwap || existingLock;
   if(!target) return;
 
-  const kindLabel = existingCuti ? 'Cuti' : 'Kuning';
-  if(target.status === 'approved'){
-    const ok = confirm(`Pengajuan ini sudah DISETUJUI oleh Admin. Apakah Anda yakin ingin membatalkannya?`);
+  const kindLabel = existingCuti ? 'Cuti' : (existingKuning ? 'Kuning' : (existingSwap ? 'Tukar Dinas' : 'Lock Slot'));
+  const isApproved = target.status === 'approved' || (existingLock && !(existingLock.reason && existingLock.reason.startsWith('[PENDING]')));
+
+  if(isApproved){
+    const ok = confirm(`Pengajuan ${kindLabel} ini sudah DISETUJUI oleh Admin. Apakah Anda yakin ingin membatalkannya?`);
     if(!ok) return;
   } else {
     const ok = confirm(`Batalkan pengajuan ${kindLabel} untuk tanggal ${day}?`);
@@ -3196,6 +3623,18 @@ async function cancelUserRequest(){
     if(idx >= 0){
       kuningList.splice(idx, 1);
       await dbDelete('kuning_requests', existingKuning.id);
+    }
+  } else if(existingSwap){
+    const idx = swapList.findIndex(s => s.id === existingSwap.id);
+    if(idx >= 0){
+      swapList.splice(idx, 1);
+      await dbDelete('swap_requests', existingSwap.id);
+    }
+  } else if(existingLock){
+    const idx = lockedList.findIndex(l => l.id === existingLock.id);
+    if(idx >= 0){
+      lockedList.splice(idx, 1);
+      await dbDelete('locked_slots', existingLock.id);
     }
   }
 
@@ -3350,6 +3789,7 @@ function fillScheduleBlock(year, month, result){
   head += `<th class="total">PS</th><th class="total">M</th><th class="total">Total</th></tr>`;
   let body = personnel.map((p,idx)=>{
     let cells='';
+    const isMe = (myPid === p.id);
     for(let d=1; d<=result.days; d++){
       const info = cellInfo(d, idx, result, month, year);
       const dow = new Date(year, month - 1, d).getDay();
@@ -3357,9 +3797,20 @@ function fillScheduleBlock(year, month, result){
       let sel = '';
       if(d<=selTo){ sel = ' sel' + (d===1?' sel-l':'') + (d===selTo?' sel-r':'') + (idx===personnel.length-1?' sel-b':''); }
       const wkndCls = isWknd ? ' weekend' : '';
-      cells += `<td class="${info.cls}${sel}${wkndCls}" title="${info.title}" data-day="${d}" data-pid="${p.id}">${info.label}</td>`;
+      let extraCls = '';
+      let badgeHtml = '';
+      let cellTitle = info.title;
+      if(isMe && isUserRole() && userDraftState && userDraftState.year === year && userDraftState.month === month && userDraftState.personnelId === myPid){
+        const dItem = userDraftState.items && userDraftState.items.find(x => x.day === d);
+        if(dItem){
+          extraCls = ' user-draft-cell';
+          const typeLabels = { cuti: '🏖 Cuti', kuning: '⭐ Kuning', swap: '🔄 Tukar', lock: `🔒 ${dItem.slot||'Lock'}` };
+          badgeHtml = `<span class="ud-cell-badge b-${dItem.type}">${typeLabels[dItem.type] || 'Draft'}</span>`;
+          cellTitle = `[DRAFT PENGAJUAN] Permohonan ${typeLabels[dItem.type]} (Belum dikirim ke Admin) · Ketuk untuk ubah / hapus draft`;
+        }
+      }
+      cells += `<td class="${info.cls}${sel}${wkndCls}${extraCls}" title="${cellTitle}" data-day="${d}" data-pid="${p.id}">${info.label}${badgeHtml}</td>`;
     }
-    const isMe = (myPid === p.id);
     const rowCls = isMe ? ' class="my-user-row"' : '';
     const nameLabel = isMe ? `${esc(p.name)} <span class="badge" style="background:#137333;color:#fff;font-size:9px;padding:2px 6px;margin-left:4px;vertical-align:middle;">Anda</span>` : esc(p.name);
     return `<tr${rowCls}><th class="no">${idx+1}</th><th class="nama">${nameLabel}</th>${cells}
@@ -3410,12 +3861,16 @@ function fillScheduleBlock(year, month, result){
       if(pid === myPid){
         if(d > freeze){
           td.classList.add('cell-clickable', 'user-cell-clickable');
-          td.title = (td.title ? td.title + ' · ' : '') + 'Klik / Ketuk untuk ajukan Cuti atau Kuning';
+          const dItem = (userDraftState && userDraftState.year === year && userDraftState.month === month && userDraftState.personnelId === myPid)
+            ? userDraftState.items.find(x => x.day === d) : null;
+          if(!dItem){
+            td.title = (td.title ? td.title + ' · ' : '') + 'Klik / Ketuk untuk ajukan Cuti, Kuning, Tukar Dinas, atau Lock Slot';
+          }
           td.addEventListener('click', () => openUserRequestModal(d, myPid));
         }
       } else {
         td.addEventListener('click', () => {
-          toast(`Ini baris ${personnel[pid].name}. Anda hanya dapat mengajukan Cuti atau Kuning untuk akun Anda sendiri (${personnel[myPid].name}).`);
+          toast(`Ini baris ${personnel[pid].name}. Anda hanya dapat mengajukan permohonan untuk akun Anda sendiri (${personnel[myPid].name}).`);
         });
       }
     });
@@ -3423,10 +3878,11 @@ function fillScheduleBlock(year, month, result){
     // Pengunjung belum login
     calEl.querySelectorAll('td[data-day]').forEach(td => {
       td.addEventListener('click', () => {
-        toast('Silakan masuk sebagai Personel di kanan atas untuk mengajukan Cuti atau Kuning.');
+        toast('Silakan masuk sebagai Personel di kanan atas untuk mengajukan Cuti, Kuning, Tukar Dinas, atau Lock Slot.');
       });
     });
   }
+  updateUserDraftBar();
 
   const logEl = document.getElementById('logBox');
   if(logEl){
@@ -3596,6 +4052,11 @@ function renderAdminPanel(){
   document.getElementById('cntCuti').textContent = p.cuti;
   document.getElementById('cntKuning').textContent = p.kuning;
   document.getElementById('cntSwap').textContent = p.swap;
+  const elCntLock = document.getElementById('cntLock');
+  if(elCntLock){
+    elCntLock.textContent = p.lock;
+    elCntLock.classList.toggle('zero', p.lock===0);
+  }
   document.getElementById('cntCuti').classList.toggle('zero', p.cuti===0);
   document.getElementById('cntKuning').classList.toggle('zero', p.kuning===0);
   document.getElementById('cntSwap').classList.toggle('zero', p.swap===0);
@@ -3621,12 +4082,13 @@ function renderAdminNotifBanner(){
   const box = document.getElementById('adminNotifBanner');
   if(!box) return;
   const p = pendingCounts();
-  const total = p.cuti + p.kuning + p.swap;
+  const total = p.cuti + p.kuning + p.swap + p.lock;
   if(total===0){ box.innerHTML = ''; return; }
   const parts = [];
   if(p.cuti)   parts.push(`<button class="ghost" onclick="gotoAdminTab('cuti')">${p.cuti} cuti</button>`);
   if(p.kuning) parts.push(`<button class="ghost" onclick="gotoAdminTab('kuning')">${p.kuning} kuning</button>`);
   if(p.swap)   parts.push(`<button class="ghost" onclick="gotoAdminTab('swap')">${p.swap} tukar dinas</button>`);
+  if(p.lock)   parts.push(`<button class="ghost" onclick="gotoAdminTab('lock')">${p.lock} lock slot</button>`);
   box.innerHTML = `<div class="admin-notif">
     <div class="ni-icon">${ICON.bell}</div>
     <div class="ni-text">
@@ -3635,7 +4097,7 @@ function renderAdminNotifBanner(){
     </div>
     <div class="ni-actions">
       ${parts.join('')}
-      <button onclick="gotoAdminTab('cuti')" style="background:#7A4E0D;">Proses sekarang</button>
+      <button onclick="gotoAdminTab('${p.cuti?'cuti':(p.kuning?'kuning':(p.swap?'swap':'lock'))}')" style="background:#7A4E0D;">Proses sekarang</button>
     </div>
   </div>`;
 }
@@ -4288,11 +4750,22 @@ function renderAdminLockList(){
   box.innerHTML = list.length ? list.map(l=>{
     const p = personnel[l.personnelId];
     const isPastOrActive = !isDraftAdmin && ((l.year < rt.y) || (l.year === rt.y && l.month < rt.m) || (l.year === rt.y && l.month === rt.m && l.date <= rt.d));
-    const actionHtml = isPastOrActive
-      ? `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`
-      : `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
-    return `<div class="reqrow approved">
-      <span><span class="who">${esc(p.name)}</span><span class="meta">Tgl ${l.date} · ${l.slot} · ${monthTag(l.month,l.year)}${l.reason?' · '+esc(l.reason):''}</span></span>
+    const isPending = (l.status === 'pending' || (l.reason && l.reason.startsWith('[PENDING]')));
+    let actionHtml = '';
+    if(isPending){
+      actionHtml = `<div class="actions">
+        <button class="small ok-btn" onclick="approveLock(${l.id})">Setuju</button>
+        <button class="small reject-btn" onclick="rejectLock(${l.id})">Tolak</button>
+      </div>`;
+    } else if(isPastOrActive){
+      actionHtml = `<span class="badge" style="background:#5A6B7E;color:#fff;">Fix (Aktif/Lewat)</span>`;
+    } else {
+      actionHtml = `<button class="x" onclick="removeLock(${l.id})" aria-label="Hapus lock">×</button>`;
+    }
+    const cleanReason = (l.reason || '').replace(/^\[PENDING\]\s*/, '');
+    const badgePending = isPending ? `<span class="badge pending" style="margin-left:6px;">Menunggu Persetujuan</span>` : '';
+    return `<div class="reqrow ${isPending?'pending':'approved'}">
+      <span><span class="who">${esc(p.name)}</span><span class="meta">Tgl ${l.date} · ${l.slot} · ${monthTag(l.month,l.year)}${cleanReason?' · '+esc(cleanReason):''}${badgePending}</span></span>
       ${actionHtml}
     </div>`;
   }).join('') : `<div class="admin-empty">Belum ada lock admin.</div>`;
@@ -4972,6 +5445,7 @@ function decorate(){
     captureScrollState();
     o();
     decorate();
+    updateUserDraftBar();
     restoreScrollState();
     requestAnimationFrame(restoreScrollState);
   };
@@ -4991,12 +5465,15 @@ function updateDraftBar(){
   const o = window.renderAll;
   window.renderAll = function(){
     captureScrollState();
+    restoreUserDraft();
     o();
     updateDraftBar();
+    updateUserDraftBar();
     restoreScrollState();
     requestAnimationFrame(restoreScrollState);
     setTimeout(restoreScrollState, 40);
   };
 }
 updateDraftBar();
+updateUserDraftBar();
 })();

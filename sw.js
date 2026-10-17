@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shift-ddk-v12';
+const CACHE_NAME = 'shift-ddk-v13';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
