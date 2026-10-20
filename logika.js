@@ -29,6 +29,11 @@ const rtNow = realToday();
 let viewY = rtNow.y;
 let viewM = rtNow.m;
 let schedules = {};
+function recordScheduleAction(y,m,n){ if(typeof window !== 'undefined' && window.recordScheduleAction && window.recordScheduleAction !== recordScheduleAction) return window.recordScheduleAction(y,m,n); }
+function persistDraft(){ if(typeof window !== 'undefined' && window.persistDraft && window.persistDraft !== persistDraft) return window.persistDraft(); }
+function startDraft(y,m,desc){ if(typeof window !== 'undefined' && window.startDraft && window.startDraft !== startDraft) return window.startDraft(y,m,desc); }
+function clearDraftStore(){ if(typeof window !== 'undefined' && window.clearDraftStore && window.clearDraftStore !== clearDraftStore) return window.clearDraftStore(); }
+function splitAtDay(kind,pid,day,m,y){ if(typeof window !== 'undefined' && window.splitAtDay && window.splitAtDay !== splitAtDay) return window.splitAtDay(kind,pid,day,m,y); }
 
 function esc(str){
   if(str == null) return '';
@@ -978,10 +983,10 @@ function buildSwapRecommendationHtml(sched, from, to){
   let body = personnel.map((p,idx)=>{
     let cells='';
     for(let d=from; d<=to; d++){
-      const info = cellInfo(d, idx, sched, viewM, viewY);
+      const info = cellInfo(d, p.id, sched, viewM, viewY);
       const dow = new Date(viewY, viewM - 1, d).getDay();
       const isWknd = (dow === 0 || dow === 6);
-      const avail = sched.calendar[d-1].L2.includes(idx);
+      const avail = sched.calendar[d-1].L2.includes(p.id);
       cells += `<td class="${info.cls}${avail?' avail':''}${isWknd?' weekend':''}" title="${info.title}${avail?' · Tersedia untuk tukar dinas':''}">${info.label}</td>`;
     }
     return `<tr><th class="no">${idx+1}</th><th class="nama">${p.name}</th>${cells}</tr>`;
@@ -1593,7 +1598,9 @@ function computeMonthTargets(y, m, extraLeaves){
 
 function repairMonth(y, m, base, extraLeaves){
   if(!base || !base.calendar) return null;
-  const days = base.days, freeze = freezeBoundaryForMonth(y, m);
+  const days = base.days;
+  const isDraft = (typeof isPreviewActive === 'function' && isPreviewActive(y, m));
+  const freeze = isDraft ? 0 : freezeBoundaryForMonth(y, m);
   const extra = (extraLeaves||[]).map(l=>({ ...l, month:m, year:y }));
   const cutiSrc = cutiList.filter(c=>c.status==='approved').concat(extra);
 
@@ -2449,8 +2456,8 @@ function openManualEditModal(day, pid){
   const entry = sched.calendar[day-1] || {};
   const isPS = (entry.PS||[]).includes(pid);
   const isM = (entry.M||[]).includes(pid);
-  const onCuti = cutiList.find(c=>c.status==='approved' && c.personnelId===pid && c.month===viewM && c.year===viewY && day>=c.start && day<=c.end);
-  const onKuning = kuningList.find(k=>k.status==='approved' && k.personnelId===pid && k.month===viewM && k.year===viewY && day>=k.start && day<=k.end);
+  const onCuti = cutiList.find(c=>c.personnelId===pid && c.month===viewM && c.year===viewY && day>=c.start && day<=c.end);
+  const onKuning = kuningList.find(k=>k.personnelId===pid && k.month===viewM && k.year===viewY && day>=k.start && day<=k.end);
   const lockItem = lockedList.find(l=>l.personnelId===pid && l.date===day && l.month===viewM && l.year===viewY);
   const isLockedInEntry = (isPS && entry.lockedPS && entry.lockedPS.includes(pid)) || (isM && entry.lockedM && entry.lockedM.includes(pid));
 
@@ -2640,7 +2647,21 @@ function renderManualEditPanel(area){
   if(txtKuning) txtKuning.addEventListener('input', () => { manualEditState.kuningReason = txtKuning.value; });
 
   const btnSave = document.getElementById('btnSaveManualEdit');
-  if(btnSave) btnSave.addEventListener('click', saveManualEdit);
+  if(btnSave){
+    btnSave.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        if(typeof window.saveManualEdit === 'function'){
+          await window.saveManualEdit();
+        } else {
+          await saveManualEdit();
+        }
+      } catch(err){
+        console.error('[saveManualEdit error]', err);
+        toast('Gagal menyimpan jadwal: ' + (err && err.message ? err.message : err));
+      }
+    });
+  }
 
   updateManualWarnBox();
 }
@@ -2703,6 +2724,7 @@ function updateManualWarnBox(){
 
 async function saveManualEdit(){
   if(!manualEditState) return;
+  try {
   const { day, pid, sched, year, month, selectedMode, lockSlot, lockReason, cutiReason, kuningReason } = manualEditState;
 
   let effectiveShift = 'OFF';
@@ -2741,10 +2763,13 @@ async function saveManualEdit(){
   dEntry.L2 = (dEntry.L2 || []).filter(id => id !== pid);
   dEntry.lockedPS = (dEntry.lockedPS || []).filter(id => id !== pid);
   dEntry.lockedM = (dEntry.lockedM || []).filter(id => id !== pid);
+  if(dEntry.cutiReplacements){
+    dEntry.cutiReplacements = dEntry.cutiReplacements.filter(r => r.pid !== pid);
+  }
 
-  // 2. Bersihkan lock lama jika ada
+  // 2. Bersihkan lock lama jika ada (jika beralih ke mode selain LOCK)
   const existingLockIdx = lockedList.findIndex(l => l.personnelId === pid && l.date === day && l.month === month && l.year === year);
-  if(existingLockIdx >= 0){
+  if(existingLockIdx >= 0 && selectedMode !== 'LOCK'){
     const lockId = lockedList[existingLockIdx].id;
     lockedList.splice(existingLockIdx, 1);
     dbDelete('locked_slots', lockId);
@@ -2786,19 +2811,51 @@ async function saveManualEdit(){
       day2D.cells = buildDayCellsSnapshot(day + 2, day2D, month, year);
     }
   } else if(selectedMode === 'CUTI'){
-    if(existingCutiIdx < 0){
+    if(existingCutiIdx >= 0){
+      cutiList[existingCutiIdx].status = 'approved';
+      if(cutiReason) cutiList[existingCutiIdx].reason = cutiReason;
+      needRepair = true;
+      dbUpdate('cuti_requests', cutiList[existingCutiIdx].id, {
+        status: 'approved',
+        reason: cutiList[existingCutiIdx].reason
+      });
+    } else {
       const row = { id: nextId++, personnelId: pid, start: day, end: day, reason: cutiReason || 'Cuti tahunan', month, year, status: 'approved' };
       cutiList.push(row);
       needRepair = true;
-      dbInsert('cuti_requests', row);
-      // Sisa cuti = jatah − cuti tercatat (cutiUsedInYear), jadi cukup mencatat barisnya; jatah tidak diubah.
+      dbInsert('cuti_requests', {
+        id: row.id,
+        personnel_id: pid,
+        start_day: day,
+        end_day: day,
+        reason: row.reason,
+        status: 'approved',
+        month,
+        year
+      });
     }
   } else if(selectedMode === 'KUNING'){
-    if(existingKuningIdx < 0){
+    if(existingKuningIdx >= 0){
+      kuningList[existingKuningIdx].status = 'approved';
+      if(kuningReason) kuningList[existingKuningIdx].reason = kuningReason;
+      needRepair = true;
+      dbUpdate('kuning_requests', kuningList[existingKuningIdx].id, {
+        status: 'approved',
+        reason: kuningList[existingKuningIdx].reason
+      });
+    } else {
       const row = { id: nextId++, personnelId: pid, start: day, end: day, reason: kuningReason || 'Keinginan libur', month, year, status: 'approved' };
       kuningList.push(row);
       needRepair = true;
-      dbInsert('kuning_requests', row);
+      dbInsert('kuning_requests', {
+        id: row.id,
+        personnel_id: pid,
+        start_day: day,
+        end_day: day,
+        status: 'approved',
+        month,
+        year
+      });
     }
   } else if(selectedMode === 'LOCK'){
     dEntry.lockedPS = dEntry.lockedPS || [];
@@ -2822,9 +2879,38 @@ async function saveManualEdit(){
         day2D.cells = buildDayCellsSnapshot(day + 2, day2D, month, year);
       }
     }
-    const row = { id: nextId++, personnelId: pid, date: day, slot: lockSlot, reason: lockReason || 'Permintaan pimpinan', month, year };
-    lockedList.push(row);
-    dbInsert('locked_slots', row);
+    if(existingLockIdx >= 0){
+      lockedList[existingLockIdx].slot = lockSlot;
+      lockedList[existingLockIdx].reason = lockReason || 'Permintaan pimpinan';
+      lockedList[existingLockIdx].status = 'approved';
+      dbUpdate('locked_slots', lockedList[existingLockIdx].id, {
+        slot: lockSlot,
+        reason: lockedList[existingLockIdx].reason
+      });
+    } else {
+      const row = { id: nextId++, personnelId: pid, date: day, slot: lockSlot, reason: lockReason || 'Permintaan pimpinan', month, year, status: 'approved' };
+      lockedList.push(row);
+      dbInsert('locked_slots', {
+        id: row.id,
+        personnel_id: pid,
+        date: day,
+        slot: lockSlot,
+        reason: row.reason,
+        month,
+        year
+      });
+    }
+  }
+
+  // Jika ada item draft personel pada tanggal ini, bersihkan
+  if(typeof userDraftState !== 'undefined' && userDraftState && userDraftState.personnelId === pid && userDraftState.year === year && userDraftState.month === month){
+    userDraftState.items = (userDraftState.items || []).filter(x => x.day !== day);
+    if(userDraftState.items.length === 0){
+      userDraftState = null;
+      try { sessionStorage.removeItem(UDK); } catch(_){}
+    } else {
+      persistUserDraft();
+    }
   }
 
   // 6a. CUTI/KUNING baru pada hari yang sebelumnya berdinas -> cari pengganti otomatis.
@@ -2840,6 +2926,9 @@ async function saveManualEdit(){
       replMsg = rp
         ? ` · pengganti ${prevSlot}: ${getPerson(rp.pid).name} (total ${(sched.monthPS[rp.pid]||0)+(sched.monthM[rp.pid]||0)} hari)`
         : ` · ⚠ belum ada pengganti ${prevSlot} yang memenuhi aturan`;
+    }
+    if(sched.calendar && sched.calendar[day-1] && sched.calendar[day-1][prevSlot]){
+      sched.calendar[day-1][prevSlot] = sched.calendar[day-1][prevSlot].filter(id => id !== pid);
     }
   }
 
@@ -2874,8 +2963,11 @@ async function saveManualEdit(){
     (entry.M || []).forEach(id => { sched.monthM[id] = (sched.monthM[id] || 0) + 1; });
   });
 
-  // Perbarui snapshot tampilan sel hari ini
-  dEntry.cells = buildDayCellsSnapshot(day, dEntry, month, year);
+  // Perbarui snapshot tampilan sel hari ini pada array kalender aktif
+  const finalEntry = sched.calendar[day - 1];
+  if(finalEntry){
+    finalEntry.cells = buildDayCellsSnapshot(day, finalEntry, month, year);
+  }
 
   // Jalankan audit kepatuhan kaedah
   auditMonthSchedule(sched, year, month);
@@ -2885,6 +2977,7 @@ async function saveManualEdit(){
     await persistSchedule(year, month, sched);
   } else {
     previewScheduleState.sched = sched;
+    persistDraft();
   }
 
   closeModal();
@@ -2894,6 +2987,10 @@ async function saveManualEdit(){
   updateNavBadges();
   if(document.getElementById('adminPage').style.display==='block') renderAdminPanel();
   toast(`Jadwal ${getPerson(pid).name} tanggal ${day} berhasil diperbarui` + replMsg + (isPreviewActive(year, month) ? ' (dalam mode pratinjau)' : '') + '.');
+  } catch(err){
+    console.error('[saveManualEdit error]', err);
+    toast('Gagal menyimpan jadwal: ' + (err && err.message ? err.message : err));
+  }
 }
 
 /* =====================================================================
@@ -3019,9 +3116,7 @@ async function submitUserDraft(y, m){
   }
 
   const count = draft.items.length;
-  const ok = confirm(`Kirim ${count} permohonan dalam draft ini ke Admin?\n\nSemua permohonan akan berstatus MENUNGGU PERSETUJUAN ADMIN sebelum resmi berlaku.`);
-  if(!ok) return;
-
+  captureScrollState();
   const myPid = draft.personnelId;
   for(const it of draft.items){
     if(it.type === 'cuti'){
@@ -3467,21 +3562,24 @@ function renderUserRequestPanel(area){
       </div>
 
       <!-- Tombol Aksi -->
-      <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
-        <button class="submit" id="btnAddToDraft" style="padding:14px; font-size:14px; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #0284C7, #0369A1);">
-          ${draftItem ? '💾 Perbarui di Draft Pengajuan' : '➕ Masukkan ke Draft Pengajuan'}
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:20px;">
+        <button class="submit" id="btnDirectSubmit" type="button" style="padding:14px; font-size:14px; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #059669, #047857); color:#fff; cursor:pointer; box-shadow:0 3px 10px rgba(5,150,105,0.25);">
+          ✔ Kirim Pengajuan
+        </button>
+        <button type="button" id="btnAddToDraft" style="padding:10px; font-size:12.5px; font-weight:600; color:#0369A1; background:#F0F9FF; border:1.5px solid #BAE6FD; border-radius:10px; cursor:pointer;">
+          ${draftItem ? '💾 Simpan Perubahan di Draft Saja' : '➕ Masukkan ke Draft (Kirim Banyak Sekaligus)'}
         </button>
         ${draftItem ? `
-          <button type="button" id="btnRemoveFromDraft" style="padding:11px; font-size:13px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
-            🗑 Hapus Tanggal Ini dari Draft Pengajuan
+          <button type="button" id="btnRemoveFromDraft" style="padding:9px; font-size:12px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
+            🗑 Hapus Tanggal Ini dari Draft
           </button>
         ` : ''}
         ${(existingCuti || existingKuning || existingSwap || existingLock) ? `
-          <button type="button" id="btnCancelUserReq" style="padding:11px; font-size:13px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
+          <button type="button" id="btnCancelUserReq" style="padding:9px; font-size:12px; font-weight:600; color:var(--red); background:#FFF5F5; border:1px solid #FED7D7; border-radius:10px; cursor:pointer;">
             🗑 Batalkan Pengajuan yang Sudah Ada di Database
           </button>
         ` : ''}
-        <button class="ghost" type="button" onclick="closeModal()" style="padding:10px; border-radius:10px;">Tutup</button>
+        <button class="ghost" type="button" onclick="closeModal()" style="padding:9px; border-radius:10px; font-size:12.5px;">Tutup</button>
       </div>
     </div>
   `;
@@ -3524,6 +3622,9 @@ function renderUserRequestPanel(area){
   if(txtLock) txtLock.addEventListener('input', () => { userRequestState.reason = txtLock.value; });
 
   // Buttons
+  const btnDirect = document.getElementById('btnDirectSubmit');
+  if(btnDirect) btnDirect.addEventListener('click', directSubmitUserRequest);
+
   const btnAdd = document.getElementById('btnAddToDraft');
   if(btnAdd) btnAdd.addEventListener('click', saveUserRequestToDraft);
 
@@ -3534,39 +3635,166 @@ function renderUserRequestPanel(area){
   if(btnCancel) btnCancel.addEventListener('click', cancelUserRequest);
 }
 
-function saveUserRequestToDraft(){
+async function directSubmitUserRequest(){
   if(!userRequestState) return;
   const { day, pid, year, month, selectedMode, reason, slot, partnerId } = userRequestState;
 
-  if(selectedMode === 'CUTI'){
-    const total = cutiBalanceForYear(pid, year);
-    const draftCount = (userDraftState ? userDraftState.items.filter(x => x.type === 'cuti' && x.day !== day).length : 0);
-    const baseUsed = cutiList.filter(c=>c.personnelId===pid && c.status!=='rejected' && c.year===year).reduce((s,c)=>s+(c.end-c.start+1),0);
-    if(total - (baseUsed + draftCount) <= 0){
-      if(!confirm(`Sisa kuota cuti tahunan Anda telah habis (${baseUsed + draftCount}/${total}). Apakah Anda tetap ingin memasukkan cuti ini ke draft?`)) return;
-    }
-  } else if(selectedMode === 'KUNING'){
-    if(!isKuningWindowOpen()){
-      if(!confirm(`Pengajuan kuning sedang di luar jendela tanggal (${kuningWindow.start}-${kuningWindow.end}). Apakah tetap ingin memasukkan ke draft?`)) return;
-    }
-    const quota = effectiveKuningQuota(pid, year, month);
-    const draftCount = (userDraftState ? userDraftState.items.filter(x => x.type === 'kuning' && x.day !== day).length : 0);
-    const baseUsed = kuningList.filter(k=>k.personnelId===pid && k.status!=='rejected' && k.month===month && k.year===year).reduce((s,k)=>s+(k.end-k.start+1),0);
-    if(quota - (baseUsed + draftCount) <= 0){
-      if(!confirm(`Batas kuota kuning bulan ini telah tercapai (${baseUsed + draftCount}/${quota}). Apakah tetap ingin memasukkan ke draft?`)) return;
-    }
-  } else if(selectedMode === 'SWAP'){
+  if(selectedMode === 'SWAP'){
     const sched = schedules[skey(year, month)];
     const dEntry = sched && sched.calendar && sched.calendar[day-1];
     const isPS = dEntry && dEntry.PS && dEntry.PS.includes(pid);
     const isM = dEntry && dEntry.M && dEntry.M.includes(pid);
     if(!isPS && !isM){
-      alert('Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila Anda memiliki jadwal dinas (PS atau M).');
+      toast('⚠ Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila jadwal Anda PS atau M.');
       return;
     }
     const pId = partnerId || parseInt(document.getElementById('selUserSwapPartner')?.value);
     if(!pId){
-      alert('Pilih rekan pengganti terlebih dahulu.');
+      toast('⚠ Pilih rekan pengganti terlebih dahulu.');
+      return;
+    }
+    userRequestState.partnerId = pId;
+    userRequestState.slot = isPS ? 'PS' : 'M';
+  } else if(selectedMode === 'LOCK'){
+    userRequestState.slot = slot || 'PS';
+  }
+
+  // Jika tanggal ini sebelumnya ada di draft, hapus dari draft
+  if(userDraftState && userDraftState.items){
+    userDraftState.items = userDraftState.items.filter(x => x.day !== day);
+    if(userDraftState.items.length === 0){
+      userDraftState = null;
+      try { sessionStorage.removeItem(UDK); } catch(e){}
+    } else {
+      persistUserDraft();
+    }
+  }
+
+  captureScrollState();
+  const reqMode = selectedMode.toUpperCase();
+  let label = 'Pengajuan';
+
+  if(reqMode === 'CUTI'){
+    label = 'Cuti';
+    const row = {
+      id: nextId++,
+      personnelId: pid,
+      start: day,
+      end: day,
+      reason: reason || 'Cuti tahunan',
+      status: 'pending',
+      month,
+      year
+    };
+    cutiList.push(row);
+    await dbInsert('cuti_requests', {
+      id: row.id,
+      personnel_id: pid,
+      start_day: day,
+      end_day: day,
+      reason: row.reason,
+      status: 'pending',
+      month,
+      year
+    });
+  } else if(reqMode === 'KUNING'){
+    label = 'Kuning';
+    const row = {
+      id: nextId++,
+      personnelId: pid,
+      start: day,
+      end: day,
+      reason: reason || 'Keinginan libur',
+      status: 'pending',
+      month,
+      year
+    };
+    kuningList.push(row);
+    await dbInsert('kuning_requests', {
+      id: row.id,
+      personnel_id: pid,
+      start_day: day,
+      end_day: day,
+      reason: row.reason,
+      status: 'pending',
+      month,
+      year
+    });
+  } else if(reqMode === 'SWAP'){
+    label = 'Tukar Dinas';
+    const row = {
+      id: nextId++,
+      requesterId: pid,
+      partnerId: userRequestState.partnerId,
+      date: day,
+      slot: userRequestState.slot || 'PS',
+      reason: reason || 'Tukar dinas',
+      status: 'pending',
+      month,
+      year
+    };
+    swapList.push(row);
+    await dbInsert('swap_requests', {
+      id: row.id,
+      requester_id: pid,
+      partner_id: row.partnerId,
+      date: day,
+      slot: row.slot,
+      reason: row.reason,
+      status: 'pending',
+      month,
+      year
+    });
+  } else if(reqMode === 'LOCK'){
+    label = 'Lock Slot';
+    const chosenSlot = userRequestState.slot || 'PS';
+    const row = {
+      id: nextId++,
+      personnelId: pid,
+      date: day,
+      slot: chosenSlot,
+      reason: '[PENDING] ' + (reason || `Permohonan slot ${chosenSlot}`),
+      month,
+      year,
+      status: 'pending'
+    };
+    lockedList.push(row);
+    await dbInsert('locked_slots', {
+      id: row.id,
+      personnel_id: pid,
+      date: day,
+      slot: chosenSlot,
+      reason: row.reason,
+      month,
+      year
+    });
+  }
+
+  closeModal();
+  renderScheduleArea();
+  updateUserDraftBar();
+  updateNavBadges();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
+  toast(`✅ Pengajuan ${label} tanggal ${day} berhasil dikirim ke Admin (Menunggu Persetujuan).`);
+}
+
+function saveUserRequestToDraft(){
+  if(!userRequestState) return;
+  const { day, pid, year, month, selectedMode, reason, slot, partnerId } = userRequestState;
+
+  if(selectedMode === 'SWAP'){
+    const sched = schedules[skey(year, month)];
+    const dEntry = sched && sched.calendar && sched.calendar[day-1];
+    const isPS = dEntry && dEntry.PS && dEntry.PS.includes(pid);
+    const isM = dEntry && dEntry.M && dEntry.M.includes(pid);
+    if(!isPS && !isM){
+      toast('⚠ Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila jadwal Anda PS atau M.');
+      return;
+    }
+    const pId = partnerId || parseInt(document.getElementById('selUserSwapPartner')?.value);
+    if(!pId){
+      toast('⚠ Pilih rekan pengganti terlebih dahulu.');
       return;
     }
     userRequestState.partnerId = pId;
@@ -3585,7 +3813,7 @@ function saveUserRequestToDraft(){
   });
 
   closeModal();
-  toast(`✏️ Permohonan tanggal ${day} berhasil dimasukkan ke Draft. Klik 'Kirim Semua Pengajuan' di bawah setelah selesai.`);
+  toast(`✏️ Permohonan tanggal ${day} dimasukkan ke Draft. Klik 'Kirim Semua Pengajuan' di bawah bila sudah selesai.`);
 }
 
 function removeDraftItemToday(){
@@ -3607,11 +3835,9 @@ async function cancelUserRequest(){
   if(isApproved){
     const ok = confirm(`Pengajuan ${kindLabel} ini sudah DISETUJUI oleh Admin. Apakah Anda yakin ingin membatalkannya?`);
     if(!ok) return;
-  } else {
-    const ok = confirm(`Batalkan pengajuan ${kindLabel} untuk tanggal ${day}?`);
-    if(!ok) return;
   }
 
+  captureScrollState();
   if(existingCuti){
     const idx = cutiList.findIndex(c => c.id === existingCuti.id);
     if(idx >= 0){
@@ -3638,10 +3864,13 @@ async function cancelUserRequest(){
     }
   }
 
-  toast(`Pengajuan ${kindLabel} tanggal ${day} berhasil dibatalkan.`);
   closeModal();
   renderScheduleArea();
+  updateUserDraftBar();
   updateNavBadges();
+  restoreScrollState();
+  requestAnimationFrame(restoreScrollState);
+  toast(`Pengajuan ${kindLabel} tanggal ${day} berhasil dibatalkan.`);
 }
 
 /* =====================================================================
@@ -3791,7 +4020,7 @@ function fillScheduleBlock(year, month, result){
     let cells='';
     const isMe = (myPid === p.id);
     for(let d=1; d<=result.days; d++){
-      const info = cellInfo(d, idx, result, month, year);
+      const info = cellInfo(d, p.id, result, month, year);
       const dow = new Date(year, month - 1, d).getDay();
       const isWknd = (dow === 0 || dow === 6);
       let sel = '';
@@ -3813,9 +4042,11 @@ function fillScheduleBlock(year, month, result){
     }
     const rowCls = isMe ? ' class="my-user-row"' : '';
     const nameLabel = isMe ? `${esc(p.name)} <span class="badge" style="background:#137333;color:#fff;font-size:9px;padding:2px 6px;margin-left:4px;vertical-align:middle;">Anda</span>` : esc(p.name);
+    const mPS = (result.monthPS && result.monthPS[p.id]) || 0;
+    const mM = (result.monthM && result.monthM[p.id]) || 0;
     return `<tr${rowCls}><th class="no">${idx+1}</th><th class="nama">${nameLabel}</th>${cells}
-      <td class="total">${result.monthPS[idx]}</td><td class="total">${result.monthM[idx]}</td>
-      <td class="total">${result.monthPS[idx]+result.monthM[idx]}</td></tr>`;
+      <td class="total">${mPS}</td><td class="total">${mM}</td>
+      <td class="total">${mPS + mM}</td></tr>`;
   }).join('');
   document.getElementById('calWrap').innerHTML = `<table class="cal"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 
@@ -3845,9 +4076,13 @@ function fillScheduleBlock(year, month, result){
         // Tanggal lewat saat belum di mode draft: klik untuk mulai mode draft dan buka edit
         td.addEventListener('click', () => {
           if(confirm(`Tanggal ${d} sudah lewat/aktif (terkunci). Apakah Anda ingin membuka Mode Draft untuk mengedit tanggal ini?`)){
-            startDraft(year, month, `Edit manual tanggal ${d}`);
-            persistDraft();
-            renderAll();
+            if(typeof window.startDraftManual === 'function'){
+              window.startDraftManual(year, month);
+            } else {
+              startDraft(year, month, `Edit manual tanggal ${d}`);
+              persistDraft();
+              renderAll();
+            }
             openManualEditModal(d, pid);
           }
         });
@@ -4903,12 +5138,12 @@ function buildFormalPrintHtml(y, m){
     let cells = '';
     for(let d=1; d<=days; d++){
       const dayData = sched.calendar[d-1];
-      const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===idx && c.month===m && c.year===y && d>=c.start && d<=c.end);
-      const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===idx && k.month===m && k.year===y && d>=k.start && d<=k.end);
-      const isPS = dayData.PS.includes(idx), isM = dayData.M.includes(idx);
-      const isLocked = (isPS && dayData.lockedPS && dayData.lockedPS.includes(idx)) ||
-                       (isM && dayData.lockedM && dayData.lockedM.includes(idx)) ||
-                       lockedList.some(l => l.personnelId === idx && l.date === d && l.month === m && l.year === y);
+      const onCuti = cutiList.some(c=>c.status==='approved' && c.personnelId===p.id && c.month===m && c.year===y && d>=c.start && d<=c.end);
+      const onKuning = kuningList.some(k=>k.status==='approved' && k.personnelId===p.id && k.month===m && k.year===y && d>=k.start && d<=k.end);
+      const isPS = dayData.PS.includes(p.id), isM = dayData.M.includes(p.id);
+      const isLocked = (isPS && dayData.lockedPS && dayData.lockedPS.includes(p.id)) ||
+                       (isM && dayData.lockedM && dayData.lockedM.includes(p.id)) ||
+                       lockedList.some(l => l.personnelId === p.id && l.date === d && l.month === m && l.year === y);
       const merah = isTanggalMerah(y,m,d);
       let label = onCuti ? '-' : (onKuning ? 'K' : (isPS ? 'PS' : (isM ? 'M' : '-')));
       const cls = onCuti ? 'cuti' : (onKuning ? 'kuning' : (isLocked ? 'locked' : (merah ? 'merah' : '')));
@@ -5083,7 +5318,8 @@ const bumpId=()=>{ nextId=Math.max(nextId,...[...cutiList,...kuningList,...locke
 window.getHistory=function(y,m){ if(isPreviewActive(y,m)) return previewScheduleState.history;
   const k=skey(y,m); return scheduleHistory[k]||(scheduleHistory[k]={undo:[],redo:[]}); };
 function pushUndo(s){ const h=getHistory(s.y,s.m); h.undo.push(s); if(h.undo.length>25) h.undo.shift(); h.redo=[]; updateUndoRedoButtons(); }
-window.recordScheduleAction=function(y,m,n){ if(_suppress||_rl) return; _rl=true; Promise.resolve().then(()=>{_rl=false;}); pushUndo(makeSnapshot(y,m,n)); };
+function recordScheduleAction(y,m,n){ if(_suppress||_rl) return; _rl=true; Promise.resolve().then(()=>{_rl=false;}); pushUndo(makeSnapshot(y,m,n)); }
+window.recordScheduleAction = recordScheduleAction;
 
 const ROW={
   cuti:{t:'cuti_requests',r:r=>({id:r.id,personnel_id:r.personnelId,start_day:r.start,end_day:r.end,reason:r.reason||null,status:r.status,month:r.month,year:r.year})},
@@ -5115,6 +5351,7 @@ function startDraft(y,m,desc){
   const cur=schedules[skey(y,m)]||null;
   previewScheduleState={year:y,month:m,sched:cur,originalSched:clone(cur),originalLists:snapLists(y,m),history:{undo:[],redo:[]},checkpoint:null,actionDesc:desc||`Perubahan jadwal ${monthNames[m-1]} ${y}`};
 }
+window.startDraft = startDraft;
 function gate(y,m){   // 'none' | 'draft' | 'new' | false
   if(!isAdmin()) return 'none';
   if(previewScheduleState){
@@ -5193,6 +5430,10 @@ function restoreDraft(){
     viewY=p.year; viewM=p.month; selYear.value=p.year; renderAll(); toast('📌 Draft sebelumnya dipulihkan.');
   }catch(e){ clearDraftStore(); }
 }
+window.clearDraftStore = clearDraftStore;
+window.persistDraft = persistDraft;
+window.restoreDraft = restoreDraft;
+window.parkDraft = parkDraft;
 { const o=window.enterApp; window.enterApp=function(r){ if(r!=='admin'&&previewScheduleState) parkDraft(); o(r); if(r==='admin') restoreDraft(); }; }
 { const o=window.logout; window.logout=function(){ if(previewScheduleState&&!confirm('Ada draft yang belum di-Submit (disimpan sementara di sesi ini). Tetap logout?')) return; parkDraft(); o(); };
   const b=document.getElementById('menuLogout'); if(b){ const nb=b.cloneNode(true); b.replaceWith(nb); nb.addEventListener('click',()=>window.logout()); } }
@@ -5222,13 +5463,14 @@ function doGenerate(fromAdmin){
 /* ---------- 5. Semua aksi admin → draft ---------- */
 function splitAtDay(kind,pid,day,m,y){
   const list=kind==='cuti'?cutiList:kuningList;
-  const i=list.findIndex(c=>c.personnelId===pid&&c.month===m&&c.year===y&&c.status==='approved'&&day>=c.start&&day<=c.end);
+  const i=list.findIndex(c=>c.personnelId===pid&&c.month===m&&c.year===y&&day>=c.start&&day<=c.end);
   if(i<0) return; const c=list[i]; if(c.start===c.end) return; const parts=[];
   if(c.start<day) parts.push({...c,start:c.start,end:day-1});
   parts.push({...c,start:day,end:day});
   if(c.end>day) parts.push({...c,start:day+1,end:c.end});
   parts.forEach((p,k)=>{ p.id=k===0?c.id:nextId++; }); list.splice(i,1,...parts);
 }
+window.splitAtDay = splitAtDay;
 function wrapOp(name,ymOf,label,opts){
   opts=opts||{}; const orig=window[name];
   window[name]=async function(...args){
@@ -5278,8 +5520,8 @@ wrapOp('addSwap',rtYM,()=>'Tukar dinas');
 wrapOp('saveManualEdit',()=>manualEditState?{y:manualEditState.year,m:manualEditState.month}:null,
   ()=>manualEditState?`Ubah shift ${getPerson(manualEditState.pid).name} tgl ${manualEditState.day}`:'Ubah shift',
   {noBal:true,pre:()=>{ const s=manualEditState; if(!s) return;
-    if(s.selectedMode!=='CUTI') splitAtDay('cuti',s.pid,s.day,s.month,s.year);
-    if(s.selectedMode!=='KUNING') splitAtDay('kuning',s.pid,s.day,s.month,s.year); }});
+    splitAtDay('cuti',s.pid,s.day,s.month,s.year);
+    splitAtDay('kuning',s.pid,s.day,s.month,s.year); }});
 { const o=window.createBlankSchedule; window.createBlankSchedule=function(y,m){
     if(!isAdmin()) return; if(previewScheduleState&&!isPreviewActive(y,m)){ toast('Submit atau batalkan draft bulan lain dulu.'); return; }
     if(!previewScheduleState) startDraft(y,m,`Buat jadwal manual ${monthNames[m-1]} ${y}`);
