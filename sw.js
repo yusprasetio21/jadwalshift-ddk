@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shift-ddk-v17';
+const CACHE_NAME = 'shift-ddk-v18';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -38,20 +38,37 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Network First dengan fallback cache untuk asset lokal
+  // 1. Navigation request (misal buka PWA / WebAPK dari layar utama dengan query ?utm_source=webapk)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Fallback offline / WebAPK cold start: cari index.html tanpa terpengaruh parameter URL
+          return caches.match('./index.html', { ignoreSearch: true })
+            .then(res => res || caches.match('./', { ignoreSearch: true }));
+        })
+    );
+    return;
+  }
+
+  // 2. Static asset lokal (JS, CSS, Icon, dsb): Cek cache dulu, lalu network
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
+    caches.match(event.request, { ignoreSearch: true }).then(cached => {
+      if (cached) return cached;
+      return fetch(event.request).then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseToCache);
-          });
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
         }
         return response;
-      })
-      .catch(() => {
-        return caches.match(event.request);
-      })
+      });
+    })
   );
 });
