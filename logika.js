@@ -114,7 +114,7 @@ async function loadFromSupabase(){
       schedules[skey(r.year, r.month)] = { calendar:r.calendar, monthPS:r.month_ps, monthM:r.month_m, logs:r.logs||[], days:r.days, endQueue:r.end_queue||[], endCur:r.end_cur||null };
     });
     if(setRow){
-      kuningWindow = { start:setRow.kuning_window_start ?? kuningWindow.start, end:setRow.kuning_window_end ?? kuningWindow.end, draftDay:setRow.kuning_window_draft_day ?? kuningWindow.draftDay, distributeDay:setRow.kuning_window_distribute_day ?? kuningWindow.distributeDay };
+      kuningWindow = { start:(setRow.kuning_window_start != null ? setRow.kuning_window_start : kuningWindow.start), end:(setRow.kuning_window_end != null ? setRow.kuning_window_end : kuningWindow.end), draftDay:(setRow.kuning_window_draft_day != null ? setRow.kuning_window_draft_day : kuningWindow.draftDay), distributeDay:(setRow.kuning_window_distribute_day != null ? setRow.kuning_window_distribute_day : kuningWindow.distributeDay) };
       printMeta = { lampiran:setRow.print_lampiran || printMeta.lampiran, nomor:setRow.print_nomor || '', tanggal:setRow.print_tanggal || '' };
     }
     if(ehRows) ehRows.forEach(r=>{ extraHolidays[skey(r.year, r.month)] = r.days; });
@@ -1554,7 +1554,7 @@ function computeMonthTargets(y, m, extraLeaves){
   const capOf = id => Math.min(HARD_MAX, getPerson(id).maxQuota || HARD_MAX);
 
   const leaves = cutiList.concat(kuningList).filter(x=>x.status==='approved')
-    .concat((extraLeaves||[]).map(l=>({ ...l, month:m, year:y })));
+    .concat((extraLeaves||[]).map(l=>Object.assign({}, l, { month:m, year:y })));
   const leaveDays = {};
   personnel.forEach(p=>{
     let c = 0;
@@ -1601,11 +1601,10 @@ function repairMonth(y, m, base, extraLeaves){
   const days = base.days;
   const isDraft = (typeof isPreviewActive === 'function' && isPreviewActive(y, m));
   const freeze = isDraft ? 0 : freezeBoundaryForMonth(y, m);
-  const extra = (extraLeaves||[]).map(l=>({ ...l, month:m, year:y }));
+  const extra = (extraLeaves||[]).map(l=>Object.assign({}, l, { month:m, year:y }));
   const cutiSrc = cutiList.filter(c=>c.status==='approved').concat(extra);
 
-  const cal = base.calendar.map(e=>({
-    ...e,
+  const cal = base.calendar.map(e=>Object.assign({}, e, {
     PS: (e.PS||[]).slice(),
     M: (e.M||[]).slice(),
     L1: (e.L1||[]).slice(),
@@ -1614,7 +1613,7 @@ function repairMonth(y, m, base, extraLeaves){
     lockedM: (e.lockedM||[]).slice(),
     swappedPS: (e.swappedPS||[]).slice(),
     swappedM: (e.swappedM||[]).slice(),
-    cutiReplacements: (e.cutiReplacements||[]).map(r=>({...r}))
+    cutiReplacements: (e.cutiReplacements||[]).map(r=>Object.assign({}, r))
   }));
   const logs = [], tot = {}, hard = {}, added = {};
   personnel.forEach(p=>{
@@ -1755,7 +1754,7 @@ function repairMonth(y, m, base, extraLeaves){
 function previewLeaves(y, m, leaves){
   const base = schedules[skey(y, m)];
   if(!base) return { r: null, text: 'Jadwal bulan ini belum dibuat.', bad: 0, diff: [], others: [] };
-  const r = repairMonth(y, m, base, leaves.map(l=>({ ...l, month: m, year: y })));
+  const r = repairMonth(y, m, base, leaves.map(l=>Object.assign({}, l, { month: m, year: y })));
   if(!r) return { r: null, text: 'Gagal melakukan kalkulasi dampak jadwal.', bad: 0, diff: [], others: [] };
   const own = new Set(leaves.map(l=>l.personnelId));
   const perPerson = {};
@@ -1889,7 +1888,7 @@ function generateSchedule(year, month, initQueue, initCur, existingResult, trigg
         day, PS: todayFrozen.PS.slice(), M: todayFrozen.M.slice(), L1: todayFrozen.L1.slice(), L2: todayFrozen.L2.slice(),
         lockedPS: (frozenEntry.lockedPS||[]).slice(), lockedM: (frozenEntry.lockedM||[]).slice(),
         swappedPS: (frozenEntry.swappedPS||[]).slice(), swappedM: (frozenEntry.swappedM||[]).slice(),
-        cutiReplacements: (frozenEntry.cutiReplacements||[]).map(r=>({...r})),
+        cutiReplacements: (frozenEntry.cutiReplacements||[]).map(r=>Object.assign({}, r)),
         cells: frozenCells
       });
       todayFrozen.PS.forEach(id=> monthPS[id]++);
@@ -2030,7 +2029,7 @@ function generateSchedule(year, month, initQueue, initCur, existingResult, trigg
       calendar.push({
         day, PS: todayPS.slice(), M: todayM.slice(), L1: todayL1.slice(), L2: todayL2.slice(),
         lockedPS: adminLockPS.slice(), lockedM: adminLockM.slice(), swappedPS: swapInPS.slice(), swappedM: swapInM.slice(),
-        cutiReplacements: (baseDay.cutiReplacements||[]).map(r=>({...r})),
+        cutiReplacements: (baseDay.cutiReplacements||[]).map(r=>Object.assign({}, r)),
         cells: dayCells
       });
       todayPS.forEach(id => monthPS[id]++);
@@ -3360,7 +3359,7 @@ function renderUserRequestPanel(area){
   if(draftItem){
     const dTypeLabel = draftItem.type === 'cuti' ? 'Cuti Resmi'
       : (draftItem.type === 'kuning' ? 'Kuning'
-      : (draftItem.type === 'swap' ? `Tukar Dinas (→ ${getPerson(draftItem.partnerId)?.name || 'Rekan'})`
+      : (draftItem.type === 'swap' ? `Tukar Dinas (→ ${(getPerson(draftItem.partnerId) || {}).name || 'Rekan'})`
       : `Permohonan Lock Slot (${draftItem.slot})`));
     existingBanner = `
       <div style="background:#F0F9FF; border:1.5px dashed #0284C7; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
@@ -3648,7 +3647,7 @@ async function directSubmitUserRequest(){
       toast('⚠ Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila jadwal Anda PS atau M.');
       return;
     }
-    const pId = partnerId || parseInt(document.getElementById('selUserSwapPartner')?.value);
+    const _swpEl1 = document.getElementById('selUserSwapPartner'); const pId = partnerId || (_swpEl1 ? parseInt(_swpEl1.value) : 0);
     if(!pId){
       toast('⚠ Pilih rekan pengganti terlebih dahulu.');
       return;
@@ -3792,7 +3791,7 @@ function saveUserRequestToDraft(){
       toast('⚠ Anda sedang Libur pada tanggal ini. Tukar dinas hanya bisa diajukan bila jadwal Anda PS atau M.');
       return;
     }
-    const pId = partnerId || parseInt(document.getElementById('selUserSwapPartner')?.value);
+    const _swpEl2 = document.getElementById('selUserSwapPartner'); const pId = partnerId || (_swpEl2 ? parseInt(_swpEl2.value) : 0);
     if(!pId){
       toast('⚠ Pilih rekan pengganti terlebih dahulu.');
       return;
@@ -5418,8 +5417,8 @@ function clearDraftStore(){ try{sessionStorage.removeItem(DK);}catch(e){} }
 function persistDraft(){
   const s=previewScheduleState; if(!s){ clearDraftStore(); return; }
   const b={year:s.year,month:s.month,sched:schedules[skey(s.year,s.month)]||null,originalSched:s.originalSched,originalLists:s.originalLists,actionDesc:s.actionDesc,lists:snapLists(s.year,s.month),checkpoint:s.checkpoint};
-  try{ sessionStorage.setItem(DK,JSON.stringify({...b,history:{undo:s.history.undo.slice(-8),redo:s.history.redo.slice(-8)}})); }
-  catch(e){ try{ sessionStorage.setItem(DK,JSON.stringify({...b,history:{undo:[],redo:[]}})); }catch(_){} }
+  try{ sessionStorage.setItem(DK,JSON.stringify(Object.assign({},b,{history:{undo:s.history.undo.slice(-8),redo:s.history.redo.slice(-8)}}))); }
+  catch(e){ try{ sessionStorage.setItem(DK,JSON.stringify(Object.assign({},b,{history:{undo:[],redo:[]}}))); }catch(_){} }
 }
 function restoreDraft(){
   if(previewScheduleState) return;
@@ -5465,9 +5464,9 @@ function splitAtDay(kind,pid,day,m,y){
   const list=kind==='cuti'?cutiList:kuningList;
   const i=list.findIndex(c=>c.personnelId===pid&&c.month===m&&c.year===y&&day>=c.start&&day<=c.end);
   if(i<0) return; const c=list[i]; if(c.start===c.end) return; const parts=[];
-  if(c.start<day) parts.push({...c,start:c.start,end:day-1});
-  parts.push({...c,start:day,end:day});
-  if(c.end>day) parts.push({...c,start:day+1,end:c.end});
+  if(c.start<day) parts.push(Object.assign({},c,{start:c.start,end:day-1}));
+  parts.push(Object.assign({},c,{start:day,end:day}));
+  if(c.end>day) parts.push(Object.assign({},c,{start:day+1,end:c.end}));
   parts.forEach((p,k)=>{ p.id=k===0?c.id:nextId++; }); list.splice(i,1,...parts);
 }
 window.splitAtDay = splitAtDay;

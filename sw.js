@@ -1,7 +1,9 @@
-const CACHE_NAME = 'shift-ddk-v16';
+const CACHE_NAME = 'shift-ddk-v17';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './polyfills.js',
+  './supabase.js',
   './logika.js',
   './manifest.json',
   './icon-192.png',
